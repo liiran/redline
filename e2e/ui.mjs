@@ -84,7 +84,7 @@ const rate = (text) => {
 let page = await newPage()
 
 await check("start page shows the pitch, three ways in, seven examples and a blank canvas", async () => {
-  await page.getByRole("heading", { name: /Draw a system/ }).waitFor()
+  await page.getByRole("heading", { name: /Find where your system/ }).waitFor()
   await page.getByRole("textbox", { name: "Describe your system" }).waitFor()
   for (const name of [/Sketch it/, /Upload a photo/]) await page.getByRole("button", { name }).waitFor()
   expect((await page.locator(".examples .card").count()) === 8, "expected 7 examples and a blank canvas")
@@ -220,7 +220,7 @@ await check("stopping returns to the design view", async () => {
 
 await check("a photo is read into boxes laid over the picture", async () => {
   await page.goto(base)
-  await page.getByRole("heading", { name: /Draw a system/ }).waitFor()
+  await page.getByRole("heading", { name: /Find where your system/ }).waitFor()
   const png = await page.screenshot({ clip: { x: 0, y: 0, width: 600, height: 400 } })
   await page.locator('input[type="file"]').first().setInputFiles({ name: "sketch.png", mimeType: "image/png", buffer: png })
   await page.getByText(/Found 4 boxes and 3 arrows/).first().waitFor({ timeout: 15_000 })
@@ -305,7 +305,7 @@ await check("saved designs come back on the start page", async () => {
 
 await check("fits a phone screen without sideways scrolling", async () => {
   const phone = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
-  await phone.getByRole("heading", { name: /Draw a system/ }).waitFor()
+  await phone.getByRole("heading", { name: /Find where your system/ }).waitFor()
   expect(await phone.evaluate(() => document.documentElement.scrollWidth <= 390), "start page scrolls sideways")
   await phone.locator(".card", { hasText: "Checkout" }).click()
   await phone.locator(".react-flow__node-box").first().waitFor()

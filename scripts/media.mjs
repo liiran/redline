@@ -104,7 +104,7 @@ try {
   const rec = new Recorder(page)
   const boxes = page.locator(".react-flow__node-box")
   await page.goto(base)
-  await page.getByRole("heading", { name: /Draw a system/ }).waitFor()
+  await page.getByRole("heading", { name: /Find where your system/ }).waitFor()
   await rec.snap(1600)
 
   const status = await (await fetch(`${base}/api/status`)).json()
@@ -173,7 +173,7 @@ try {
 
   // The start page and the editor, once nothing is running.
   await big.goto(base)
-  await big.getByRole("heading", { name: /Draw a system/ }).waitFor()
+  await big.getByRole("heading", { name: /Find where your system/ }).waitFor()
   await big.locator(".recent-row").first().waitFor()
   await shot(big, "start")
   await big.locator(".card", { hasText: "Battle royale backend" }).click()

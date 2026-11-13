@@ -55,10 +55,11 @@ export function Start({ onSketch }: { onSketch: () => void }) {
       }}
     >
       <div className="start-inner">
+        <div className="start-main">
         <h1 className="hero">
-          Draw a system. Watch it <em>break</em>.
+          Find where your system <em>breaks</em>.
         </h1>
-        <p className="lede">Every box runs as a real container, so every number is measured.</p>
+        <p className="lede">Describe it, sketch it or upload a photo. Redline runs it in real containers and pushes traffic until something gives.</p>
 
         {status && !status.docker.ok && (
           <div className="notice bad" style={{ marginBottom: 16 }}>
@@ -136,7 +137,7 @@ export function Start({ onSketch }: { onSketch: () => void }) {
           }}
         />
 
-        <h2 className="start-label">Examples</h2>
+        <h2 className="start-label">Start from an example</h2>
         <div className="examples">
           {TEMPLATES.map((t) => (
             <button key={t.slug} className="card" onClick={() => openTemplate(t.slug)} title={t.summary}>
@@ -154,20 +155,39 @@ export function Start({ onSketch }: { onSketch: () => void }) {
           </button>
         </div>
 
-        {recent.length > 0 && (
-          <>
-            <h2 className="start-label">Your designs</h2>
+        </div>
+
+        <aside className="start-side">
+          <h2 className="start-label">Your designs</h2>
+          {recent.length > 0 ? (
             <div className="recent">
-              {recent.slice(0, 6).map((d) => (
+              {recent.slice(0, 8).map((d) => (
                 <button key={d.id} className="recent-row" onClick={() => openSaved(d.id)}>
                   <span className="name">{d.name}</span>
-                  <span className="muted num">{d.boxes} boxes</span>
-                  <span className="muted">{ago(d.updatedAt)}</span>
+                  <span className="muted num">{ago(d.updatedAt)}</span>
                 </button>
               ))}
             </div>
-          </>
-        )}
+          ) : (
+            <p className="side-empty">Designs you change or run show up here.</p>
+          )}
+
+          <h2 className="start-label">How it works</h2>
+          <ol className="steps-how">
+            <li>
+              <strong>Draw it</strong>
+              <span>Claude turns your words, sketch or photo into boxes and arrows.</span>
+            </li>
+            <li>
+              <strong>Run it</strong>
+              <span>Each box starts as a real container in Docker: Postgres, Redis and your services.</span>
+            </li>
+            <li>
+              <strong>Break it</strong>
+              <span>Traffic goes up step by step until a box gives out. Redline says which one and why.</span>
+            </li>
+          </ol>
+        </aside>
       </div>
       {over && (
         <div className="drop-overlay" aria-hidden>
