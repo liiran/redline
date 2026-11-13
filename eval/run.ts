@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { chromium } from "playwright-core"
 import type { Design } from "../shared/design.ts"
 import { nodeSettings } from "../shared/design.ts"
+import { sketchSchema } from "../shared/normalize.ts"
 import { canRun, validate } from "../shared/validate.ts"
 import { pickReader, toDesign, type Image } from "../server/recognize.ts"
 import { makeCase, type Case } from "./cases.ts"
@@ -37,7 +38,10 @@ if (reportOnly) {
     if (!existsSync(file)) continue
     const saved = JSON.parse(readFileSync(file, "utf8"))
     model = saved.model ?? "claude-opus-5-5"
-    stored.push({ id: c.id, notes: c.notes, ms: saved.score.ms, costUsd: saved.score.costUsd, ...score(c, saved.design) })
+    // Rebuilt from Claude's saved answer, so changes to the clean-up steps show up here too.
+    const image: Image = { data: "", mediaType: "image/png", width: c.width, height: c.height }
+    const design = saved.sketch ? toDesign(sketchSchema.parse(saved.sketch), { image }, "0000000000000000").design : saved.design
+    stored.push({ id: c.id, notes: c.notes, ms: saved.score.ms, costUsd: saved.score.costUsd, ...score(c, design) })
   }
   writeReport(stored, model, "cli")
   process.exit(0)
@@ -142,7 +146,7 @@ async function worker() {
     const started = Date.now()
     try {
       const reading = await reader!.read({ image })
-      const design = toDesign(reading.sketch, { image }, "0000000000000000")
+      const { design } = toDesign(reading.sketch, { image }, "0000000000000000")
       const s = { id: c.id, notes: c.notes, ms: Date.now() - started, costUsd: reading.costUsd ?? 0, ...score(c, design) }
       scores.push(s)
       writeFileSync(join(out, `${c.id}.json`), JSON.stringify({ model: reading.model, truth: { nodes: c.nodes, edges: c.edges }, sketch: reading.sketch, design, score: s }, null, 2))

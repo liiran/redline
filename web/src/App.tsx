@@ -2,11 +2,11 @@ import { Button } from "@ui-sdk/react/button"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/react/menu"
 import { ToastRegion } from "@ui-sdk/react/toast"
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react"
-import { Image, ImageOff, Loader2, Maximize, Play, Plus, Redo2, Search, Square, Undo2 } from "lucide-react"
+import { Image, ImageOff, LayoutGrid, Loader2, Maximize, Play, Plus, Redo2, Search, Square, Undo2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CATALOG, KINDS, type Kind } from "../../shared/catalog.ts"
 import { validate } from "../../shared/validate.ts"
-import { addBox, openSaved, readPhoto, run, stop } from "./actions.ts"
+import { addBox, openSaved, readPhoto, run, stop, tidy } from "./actions.ts"
 import { api, listen } from "./api.ts"
 import { Canvas } from "./Canvas.tsx"
 import { Tip } from "./Controls.tsx"
@@ -18,13 +18,14 @@ import { Panel } from "./Panel.tsx"
 import { Start } from "./Start.tsx"
 import { useApp } from "./store.ts"
 
+/** A gauge whose last stretch is red, with the needle in it: the redline on a rev counter. */
 function Logo() {
   return (
-    <svg viewBox="0 0 32 32" aria-hidden>
-      <rect width="32" height="32" rx="8" fill="var(--ink)" />
-      <path d="M7 21a9 9 0 0 1 18 0" fill="none" stroke="var(--surface)" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M16 21 23.5 12.5" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
-      <circle cx="16" cy="21" r="2" fill="#ef4444" />
+    <svg viewBox="0 0 24 24" fill="none" strokeWidth="2.25" strokeLinecap="round" aria-hidden>
+      <path d="M3.5 17a8.5 8.5 0 0 1 14.51-6.01" stroke="currentColor" />
+      <path d="M18.01 10.99A8.5 8.5 0 0 1 20.5 17" stroke="var(--red)" />
+      <path d="M12 17l5-3.6" stroke="var(--red)" />
+      <circle cx="12" cy="17" r="1.6" fill="var(--red)" stroke="none" />
     </svg>
   )
 }
@@ -95,6 +96,14 @@ function CanvasTools() {
           </button>
         </Tip>
       )}
+      <Tip text="Tidy up: line boxes up in the order requests flow">
+        <button className="btn sm icon ghost" aria-label="Tidy up" onClick={() => {
+          tidy()
+          setTimeout(() => flow.fitView({ padding: 0.25, duration: 250, maxZoom: 1.2 }), 30)
+        }}>
+          <LayoutGrid aria-hidden />
+        </button>
+      </Tip>
       <Tip text="Fit to screen">
         <button className="btn sm icon ghost" aria-label="Fit to screen" onClick={() => flow.fitView({ padding: 0.25, duration: 250, maxZoom: 1.2 })}>
           <Maximize aria-hidden />
@@ -196,6 +205,7 @@ export function App() {
         return
       }
       if (typing) return
+      if (e.key === "Escape" && !document.querySelector("[role=dialog], [role=menu]")) useApp.getState().select(null)
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault()
         if (e.shiftKey) useApp.getState().redo()

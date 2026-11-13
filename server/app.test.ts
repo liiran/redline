@@ -121,6 +121,10 @@ describe("designs and drawings", () => {
     expect(reading.design.photo).toBeUndefined()
     const x = (id: string) => reading.design.nodes.find((n: { id: string }) => n.id === id).x
     expect(x("users")).toBeLessThan(x("api"))
+    expect(reading.design.name).toBe("Cached API")
+    // The stand-in reader leaves its CDN unconnected; it gets an origin and traffic.
+    expect(reading.added).toBe(2)
+    expect(reading.design.edges.map((e: { id: string }) => e.id)).toEqual(expect.arrayContaining(["users->assets-cdn", "assets-cdn->api"]))
   })
 
   it("rejects an image that isn't base64", async () => {

@@ -22,6 +22,8 @@ export type KindInfo = {
   image: "runtime" | "postgres" | "redis" | "none"
   defaults: Settings
   editable: SettingKey[]
+  /** The settings shown up front; the rest of `editable` sits under "More settings". */
+  primary: SettingKey[]
 }
 
 const base: Settings = { cpus: 0.5, memoryMb: 128, replicas: 1, workMs: 0, pool: 0, ttlSec: 0, latencyMs: 0 }
@@ -35,6 +37,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "none",
     defaults: { ...base, cpus: 0 },
     editable: [],
+    primary: [],
   },
   cdn: {
     short: "Edge cache",
@@ -44,6 +47,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "runtime",
     defaults: { ...base, memoryMb: 256, ttlSec: 30 },
     editable: ["cpus", "ttlSec"],
+    primary: ["ttlSec"],
   },
   loadbalancer: {
     short: "Round robin",
@@ -53,6 +57,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "runtime",
     defaults: { ...base, memoryMb: 256 },
     editable: ["cpus"],
+    primary: ["cpus"],
   },
   service: {
     short: "Your code",
@@ -62,6 +67,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "runtime",
     defaults: { ...base, memoryMb: 256, workMs: 1, pool: 10 },
     editable: ["replicas", "cpus", "workMs", "pool"],
+    primary: ["replicas", "cpus"],
   },
   worker: {
     short: "Background jobs",
@@ -71,6 +77,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "runtime",
     defaults: { ...base, memoryMb: 256, workMs: 5, pool: 5 },
     editable: ["replicas", "cpus", "workMs", "pool"],
+    primary: ["replicas", "cpus"],
   },
   queue: {
     short: "Redis Streams",
@@ -80,6 +87,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "redis",
     defaults: { ...base },
     editable: ["cpus"],
+    primary: [],
   },
   cache: {
     short: "Redis",
@@ -89,6 +97,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "redis",
     defaults: { ...base, memoryMb: 128, ttlSec: 60 },
     editable: ["cpus", "ttlSec"],
+    primary: ["ttlSec"],
   },
   database: {
     short: "PostgreSQL",
@@ -98,6 +107,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "postgres",
     defaults: { ...base, cpus: 1, memoryMb: 512 },
     editable: ["cpus"],
+    primary: ["cpus"],
   },
   external: {
     short: "Outside service",
@@ -107,6 +117,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     image: "runtime",
     defaults: { ...base, cpus: 0.25, latencyMs: 120 },
     editable: ["latencyMs"],
+    primary: ["latencyMs"],
   },
 }
 

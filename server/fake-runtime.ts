@@ -166,6 +166,7 @@ export class FakeRuntime implements Runtime {
 }
 
 const FAKE_SKETCH: Sketch = {
+  name: "cached API.",
   nodes: [
     { ref: "u", label: "Users", kind: "client", box: [79, 284, 161, 124], replicas: null },
     { ref: "a", label: "API", kind: "service", box: [417, 329, 203, 115], replicas: null },
@@ -187,7 +188,10 @@ export function fakeReader(): Reader {
     async read(input) {
       await new Promise((r) => setTimeout(r, 300))
       if (input.text?.includes("nothing")) return { sketch: { nodes: [], edges: [] }, model: "test-reader", costUsd: 0 }
-      return { sketch: structuredClone(FAKE_SKETCH), model: "test-reader", costUsd: 0 }
+      const sketch = structuredClone(FAKE_SKETCH)
+      // A description also gets a CDN with no arrows, so tests see Redline join it up.
+      if (input.text) sketch.nodes.push({ ref: "c", label: "Assets CDN", kind: "cdn", box: [0, 0, 0, 0], replicas: null })
+      return { sketch, model: "test-reader", costUsd: 0 }
     },
   }
 }

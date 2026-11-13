@@ -3,6 +3,7 @@ import {
   BackgroundVariant,
   BaseEdge,
   EdgeLabelRenderer,
+  getBezierPath,
   Handle,
   MarkerType,
   Position,
@@ -13,30 +14,31 @@ import {
   type Edge,
   type EdgeChange,
   type EdgeProps,
+  type FinalConnectionState,
   type InternalNode,
   type Node,
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react"
 import { toast } from "@ui-sdk/react/toast"
-import { memo, useCallback, useMemo } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { compact, nodeHealth, type Health } from "../../shared/analyze.ts"
-import { CATALOG, edgeRole } from "../../shared/catalog.ts"
+import { CATALOG, KINDS, edgeRole } from "../../shared/catalog.ts"
 import { edgeId, nodeSettings, type Design, type DesignNode } from "../../shared/design.ts"
 import { NODE_HEIGHT, NODE_WIDTH } from "../../shared/normalize.ts"
 import type { Sample } from "../../shared/samples.ts"
 import type { Issue } from "../../shared/validate.ts"
-import { removeSelection } from "./actions.ts"
+import { addConnected, removeSelection } from "./actions.ts"
 import { photoUrl } from "./api.ts"
 import { KindIcon } from "./kinds.tsx"
 import { useApp } from "./store.ts"
 
-type BoxData = { node: DesignNode; health: Health | null; issue: boolean; live: boolean }
+type BoxData = { node: DesignNode; health: Health | null; issue: boolean; live: boolean; dim: boolean }
 type PhotoData = { url: string }
-type FlowData = { rate: number; live: boolean }
+type FlowData = { rate: number; live: boolean; dim: boolean; focus: boolean }
 
 const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<BoxData>>) {
-  const { node, health, issue, live } = data
+  const { node, health, issue, live, dim } = data
   const replicas = nodeSettings(node).replicas
   const status = live && health ? health.status : "idle"
   const info = CATALOG[node.kind]
@@ -46,7 +48,7 @@ const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<BoxData>>) {
     <>
       {replicas > 1 && <div className="box-copies" />}
       {replicas > 2 && <div className="box-copies" />}
-      <div className="box" data-status={status} data-issue={issue && !live ? "" : undefined} data-kind={node.kind}>
+      <div className="box" data-status={status} data-issue={issue && !live ? "" : undefined} data-kind={node.kind} data-dim={dim ? "" : undefined}>
         <Handle type="target" position={Position.Left} />
         <span className="box-icon">
           <KindIcon kind={node.kind} />
@@ -73,51 +75,68 @@ function PhotoNode({ data }: NodeProps<Node<PhotoData>>) {
   )
 }
 
-function borderPoint(node: InternalNode, toward: { x: number; y: number }) {
-  const w = node.measured.width ?? NODE_WIDTH
-  const h = node.measured.height ?? NODE_HEIGHT
-  const cx = node.internals.positionAbsolute.x + w / 2
-  const cy = node.internals.positionAbsolute.y + h / 2
-  const dx = toward.x - cx
-  const dy = toward.y - cy
-  if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const scale = Math.min(Math.abs((w / 2 + 6) / (dx || 1e-9)), Math.abs((h / 2 + 6) / (dy || 1e-9)))
-  return { x: cx + dx * scale, y: cy + dy * scale }
+function rect(node: InternalNode) {
+  return {
+    x: node.internals.positionAbsolute.x,
+    y: node.internals.positionAbsolute.y,
+    w: node.measured.width ?? NODE_WIDTH,
+    h: node.measured.height ?? NODE_HEIGHT,
+  }
 }
 
-function center(node: InternalNode) {
-  return {
-    x: node.internals.positionAbsolute.x + (node.measured.width ?? NODE_WIDTH) / 2,
-    y: node.internals.positionAbsolute.y + (node.measured.height ?? NODE_HEIGHT) / 2,
+const GAP = 3
+
+/** Arrows leave the side of a box that faces the other one: right to left when it sits further right. */
+function ends(from: InternalNode, to: InternalNode) {
+  const a = rect(from)
+  const b = rect(to)
+  if (b.x >= a.x + a.w + 16) {
+    return { sx: a.x + a.w + GAP, sy: a.y + a.h / 2, sp: Position.Right, tx: b.x - GAP, ty: b.y + b.h / 2, tp: Position.Left }
   }
+  if (a.x >= b.x + b.w + 16) {
+    return { sx: a.x - GAP, sy: a.y + a.h / 2, sp: Position.Left, tx: b.x + b.w + GAP, ty: b.y + b.h / 2, tp: Position.Right }
+  }
+  if (b.y >= a.y) {
+    return { sx: a.x + a.w / 2, sy: a.y + a.h + GAP, sp: Position.Bottom, tx: b.x + b.w / 2, ty: b.y - GAP, tp: Position.Top }
+  }
+  return { sx: a.x + a.w / 2, sy: a.y - GAP, sp: Position.Top, tx: b.x + b.w / 2, ty: b.y + b.h + GAP, tp: Position.Bottom }
 }
 
 function FlowEdge({ id, source, target, data, selected, markerEnd }: EdgeProps<Edge<FlowData>>) {
   const from = useInternalNode(source)
   const to = useInternalNode(target)
   if (!from || !to) return null
-  const a = borderPoint(from, center(to))
-  const b = borderPoint(to, center(from))
-  const mx = (a.x + b.x) / 2
-  const my = (a.y + b.y) / 2
-  const path = `M ${a.x} ${a.y} L ${b.x} ${b.y}`
+  const e = ends(from, to)
+  const [path, mx, my] = getBezierPath({
+    sourceX: e.sx,
+    sourceY: e.sy,
+    sourcePosition: e.sp,
+    targetX: e.tx,
+    targetY: e.ty,
+    targetPosition: e.tp,
+    curvature: 0.35,
+  })
   const rate = data?.rate ?? 0
   const flowing = !!data?.live && rate > 0
   const width = flowing ? Math.min(4, 1.25 + Math.log10(1 + rate) * 0.8) : 1.25
+  const strong = selected || data?.focus
   return (
     <>
       <BaseEdge
         id={id}
         path={path}
         markerEnd={markerEnd}
+        interactionWidth={14}
         style={{
-          strokeWidth: selected ? width + 0.75 : width,
-          stroke: selected ? "var(--ink)" : flowing ? "var(--muted)" : "var(--faint)",
+          strokeWidth: strong ? width + 0.75 : width,
+          stroke: strong ? "var(--ink)" : flowing ? "var(--muted)" : "var(--faint)",
           strokeDasharray: flowing ? "6 5" : undefined,
+          opacity: data?.dim ? 0.18 : 1,
+          transition: "opacity 0.15s",
           animation: flowing ? `flow ${Math.max(0.25, 1.6 - Math.log10(1 + rate) * 0.35)}s linear infinite` : undefined,
         }}
       />
-      {flowing && (
+      {flowing && !data?.dim && (
         <EdgeLabelRenderer>
           <div className="edge-label" style={{ transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)` }}>
             {compact(rate)}/s
@@ -159,6 +178,23 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
   const runningIds = useMemo(() => new Set(session?.design.nodes.map((n) => n.id) ?? []), [session])
 
   const flagged = useMemo(() => new Set(issues.filter((i) => i.level === "error" && i.nodeId).map((i) => i.nodeId!)), [issues])
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [drop, setDrop] = useState<Drop | null>(null)
+  // React Flow hides a box until it knows its size. Boxes are rebuilt on every change, so their
+  // measured sizes are kept here and handed back, or each rebuild would blink them out for a frame.
+  const sizes = useRef(new Map<string, { width: number; height: number }>())
+
+  // Hovering or selecting a box fades everything it isn't connected to.
+  const focus = hovered ?? (design.nodes.some((n) => n.id === selected) ? selected : null)
+  const near = useMemo(() => {
+    if (!focus) return null
+    const ids = new Set([focus])
+    for (const edge of design.edges) {
+      if (edge.from === focus) ids.add(edge.to)
+      if (edge.to === focus) ids.add(edge.from)
+    }
+    return ids
+  }, [focus, design.edges])
 
   const nodes = useMemo(() => {
     const out: Node[] = []
@@ -180,12 +216,19 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
         id: node.id,
         type: "box",
         position: { x: node.x, y: node.y },
+        measured: sizes.current.get(node.id),
         selected: node.id === selected,
-        data: { node, health: running ? nodeHealth(design, node, sample, previous) : null, issue: flagged.has(node.id), live: running } satisfies BoxData,
+        data: {
+          node,
+          health: running ? nodeHealth(design, node, sample, previous) : null,
+          issue: flagged.has(node.id),
+          live: running,
+          dim: !!near && !near.has(node.id),
+        } satisfies BoxData,
       })
     }
     return out
-  }, [design, showPhoto, live, runningIds, selected, sample, previous, flagged])
+  }, [design, showPhoto, live, runningIds, selected, sample, previous, flagged, near])
 
   const edges = useMemo(() => {
     const byId = new Map(design.nodes.map((node) => [node.id, node]))
@@ -200,17 +243,23 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
         type: "flow",
         selected: edge.id === selected,
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, markerUnits: "userSpaceOnUse", color: ok ? "var(--faint)" : "var(--red)" },
-        data: { rate: from && to && live ? edgeRate(design, from, to, sample) : 0, live } satisfies FlowData,
+        data: {
+          rate: from && to && live ? edgeRate(design, from, to, sample) : 0,
+          live,
+          dim: !!focus && edge.from !== focus && edge.to !== focus,
+          focus: !!focus && (edge.from === focus || edge.to === focus),
+        } satisfies FlowData,
         style: ok ? undefined : { stroke: "var(--red)" },
       }
     })
-  }, [design, live, sample, selected])
+  }, [design, live, sample, selected, focus])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       const moves = new Map<string, { x: number; y: number }>()
       const removed: string[] = []
       for (const change of changes) {
+        if (change.type === "dimensions" && change.dimensions) sizes.current.set(change.id, change.dimensions)
         if (change.type === "position" && change.position && change.id !== "__photo") moves.set(change.id, change.position)
         if (change.type === "select" && change.selected) select(change.id)
         if (change.type === "remove") removed.push(change.id)
@@ -267,26 +316,95 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
     [edit],
   )
 
+  // Letting go of a new arrow over empty canvas offers the boxes that could sit at its end.
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (state.toNode || !state.fromNode) return
+      const point = "changedTouches" in event ? event.changedTouches[0]! : event
+      setDrop({
+        from: state.fromNode.id,
+        before: state.fromHandle?.type === "target",
+        screen: { x: point.clientX, y: point.clientY },
+        at: flow.screenToFlowPosition({ x: point.clientX, y: point.clientY }),
+      })
+    },
+    [flow],
+  )
+
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      onPaneClick={() => select(null)}
-      fitView
-      fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }}
-      minZoom={0.2}
-      maxZoom={2}
-      deleteKeyCode={["Backspace", "Delete"]}
-      multiSelectionKeyCode={["Shift"]}
-      proOptions={{ hideAttribution: true }}
-      onInit={() => flow.fitView({ padding: 0.25, maxZoom: 1.2 })}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-    </ReactFlow>
+    <>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
+        onNodeMouseEnter={(_, node) => node.type === "box" && setHovered(node.id)}
+        onNodeMouseLeave={() => setHovered(null)}
+        onNodeDragStart={() => setHovered(null)}
+        onPaneClick={() => {
+          select(null)
+          setDrop(null)
+        }}
+        fitView
+        fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }}
+        minZoom={0.2}
+        maxZoom={2}
+        deleteKeyCode={["Backspace", "Delete"]}
+        multiSelectionKeyCode={["Shift"]}
+        proOptions={{ hideAttribution: true }}
+        onInit={() => flow.fitView({ padding: 0.25, maxZoom: 1.2 })}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+      </ReactFlow>
+      {drop && <DropMenu drop={drop} design={design} onClose={() => setDrop(null)} />}
+    </>
+  )
+}
+
+type Drop = { from: string; before: boolean; screen: { x: number; y: number }; at: { x: number; y: number } }
+
+function DropMenu({ drop, design, onClose }: { drop: Drop; design: Design; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const anchor = design.nodes.find((n) => n.id === drop.from)
+  useEffect(() => {
+    ref.current?.querySelector("button")?.focus()
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
+    const onDown = (e: PointerEvent) => !ref.current?.contains(e.target as globalThis.Node) && onClose()
+    window.addEventListener("keydown", onKey)
+    window.addEventListener("pointerdown", onDown, true)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      window.removeEventListener("pointerdown", onDown, true)
+    }
+  }, [onClose])
+  if (!anchor) return null
+  const kinds = KINDS.filter((kind) => (drop.before ? edgeRole(kind, anchor.kind) : edgeRole(anchor.kind, kind)) !== null).filter(
+    (kind) => kind !== "client" || !design.nodes.some((n) => n.kind === "client"),
+  )
+  const left = Math.min(drop.screen.x, window.innerWidth - 220)
+  const top = Math.min(drop.screen.y, window.innerHeight - 40 - kinds.length * 34)
+  return (
+    <div ref={ref} className="drop-menu" role="menu" aria-label={drop.before ? `Add a box that sends to ${anchor.label}` : `Add a box after ${anchor.label}`} style={{ left, top }}>
+      <p className="drop-menu-title">{drop.before ? `Sends to “${anchor.label}”` : `After “${anchor.label}”`}</p>
+      {kinds.length === 0 && <p className="drop-menu-empty">Nothing can connect here.</p>}
+      {kinds.map((kind) => (
+        <button
+          key={kind}
+          role="menuitem"
+          onClick={() => {
+            addConnected(anchor.id, kind, { before: drop.before, at: drop.at })
+            onClose()
+          }}
+        >
+          <KindIcon kind={kind} />
+          <span>{CATALOG[kind].title}</span>
+          <small>{CATALOG[kind].short}</small>
+        </button>
+      ))}
+    </div>
   )
 }

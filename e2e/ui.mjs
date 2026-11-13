@@ -57,7 +57,9 @@ async function check(name, fn) {
     console.log(`  ok    ${name} (${Date.now() - started} ms)`)
   } catch (error) {
     results.push({ name, ok: false })
-    console.log(`  FAIL  ${name}\n        ${String(error.message ?? error).split("\n")[0]}`)
+    const picture = join(tmpdir(), `redline-e2e-fail-${results.length}.png`)
+    await page?.screenshot({ path: picture }).catch(() => {})
+    console.log(`  FAIL  ${name}\n        ${String(error.message ?? error).split("\n")[0]}\n        screenshot: ${picture}`)
   }
 }
 
@@ -95,13 +97,21 @@ await check("an example opens on the canvas with its boxes and arrows", async ()
   await page.getByText("6", { exact: true }).first().waitFor()
 })
 
-await check("selecting a box shows its settings, and renaming it updates the canvas", async () => {
+await check("selecting a box shows its connections and settings, and renaming it updates the canvas", async () => {
   await boxes(page).filter({ hasText: "Postgres" }).click()
-  const name = page.getByRole("textbox", { name: "", exact: false }).first()
-  await page.locator(".panel input.text-input").first().fill("Orders DB")
-  await page.locator(".panel input.text-input").first().press("Enter")
+  await page.locator(".connections .chip", { hasText: "API" }).waitFor()
+  expect((await page.locator(".panel").getByText("Editing").count()) === 0, "the design sections should give way to the box")
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Orders DB")
+  await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter")
   await boxes(page).filter({ hasText: "Orders DB" }).waitFor()
-  void name
+})
+
+await check("hovering a box fades the boxes it isn't connected to", async () => {
+  await page.getByRole("button", { name: "Close" }).click()
+  await boxes(page).filter({ hasText: "Redis" }).hover()
+  await page.waitForFunction(() => document.querySelectorAll(".box[data-dim]").length > 0)
+  await page.mouse.move(5, 5)
+  await page.waitForFunction(() => document.querySelectorAll(".box[data-dim]").length === 0)
 })
 
 await check("copies change the badge, and undo puts it back", async () => {
@@ -121,6 +131,48 @@ await check("adding a box from the menu and deleting it", async () => {
   await page.getByText("needs a queue to take jobs from").waitFor()
   await page.getByRole("button", { name: "Delete box" }).click()
   await page.waitForFunction((n) => document.querySelectorAll(".react-flow__node-box").length === n, before)
+})
+
+const arrows = (page) => page.locator(".react-flow__edge")
+
+await check("a new box added from a selected box comes already connected", async () => {
+  const [nodes, edges] = [await boxes(page).count(), await arrows(page).count()]
+  await boxes(page).filter({ hasText: "API" }).click()
+  await page.getByRole("button", { name: "New box" }).click()
+  await page.getByRole("menuitem", { name: /Queue/ }).click()
+  await page.waitForFunction(([n, e]) => document.querySelectorAll(".react-flow__node-box").length === n + 1 && document.querySelectorAll(".react-flow__edge").length === e + 1, [nodes, edges])
+  await page.locator(".connections .chip", { hasText: "API" }).waitFor()
+  // The new box's name field has focus: Escape leaves it, a second Escape lets go of the box.
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Control+z")
+  await page.waitForFunction((n) => document.querySelectorAll(".react-flow__node-box").length === n, nodes)
+})
+
+await check("letting go of an arrow on empty canvas adds a connected box there", async () => {
+  const [nodes, edges] = [await boxes(page).count(), await arrows(page).count()]
+  const api = boxes(page).filter({ hasText: "API" })
+  await api.hover()
+  const handle = await api.locator(".react-flow__handle.source").boundingBox()
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handle.x + 160, handle.y + 260, { steps: 12 })
+  await page.mouse.up()
+  await page.locator(".drop-menu").waitFor()
+  await page.locator(".drop-menu").getByRole("menuitem", { name: /External API/ }).click()
+  await page.waitForFunction(([n, e]) => document.querySelectorAll(".react-flow__node-box").length === n + 1 && document.querySelectorAll(".react-flow__edge").length === e + 1, [nodes, edges])
+  // The new box's name field has focus: Escape leaves it, a second Escape lets go of the box.
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Control+z")
+  await page.waitForFunction((n) => document.querySelectorAll(".react-flow__node-box").length === n, nodes)
+})
+
+await check("tidy up lines the boxes up without changing them", async () => {
+  const [nodes, edges] = [await boxes(page).count(), await arrows(page).count()]
+  await page.getByRole("button", { name: "Tidy up" }).click()
+  expect((await boxes(page).count()) === nodes && (await arrows(page).count()) === edges, "tidying changed the design")
+  await page.keyboard.press("Control+z")
 })
 
 await check("a run goes live, the breaking point is found and explained", async () => {
@@ -176,15 +228,17 @@ await check("a photo is read into boxes laid over the picture", async () => {
   expect((await page.locator(".react-flow__node-photo").count()) === 0, "the photo should hide")
 })
 
-await check("describing a system in words draws it", async () => {
+await check("describing a system in words draws it with a short title, every box connected", async () => {
   await page.keyboard.press("Control+k")
   await page.getByRole("combobox", { name: "Search commands" }).fill("describe")
   await page.keyboard.press("Enter")
   await page.getByRole("dialog", { name: "Describe your system" }).waitFor()
   await page.getByRole("button", { name: "Use the example" }).click()
   await page.getByRole("button", { name: "Draw it" }).click()
-  await page.waitForFunction(() => document.querySelector(".name-input")?.value.startsWith("Users hit a load balancer"))
-  expect((await boxes(page).count()) === 4, "expected 4 boxes")
+  await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-box").length === 5)
+  expect((await page.locator(".name-input").inputValue()) === "Cached API", "the title should be Claude's short name")
+  expect((await arrows(page).count()) === 5, "the stray CDN should be joined up")
+  await page.getByText(/Added 2 arrows/).first().waitFor()
   expect((await page.locator(".react-flow__node-photo").count()) === 0, "a described system has no photo")
 })
 
@@ -202,9 +256,10 @@ await check("the sketch pad turns strokes into a design", async () => {
     await page.mouse.move(box.x + box.width * (x + 0.12), box.y + box.height * (y + 0.12), { steps: 6 })
     await page.mouse.up()
   }
-  const toasts = await page.getByText(/Found 4 boxes/).count()
   await page.getByRole("button", { name: "Read my sketch" }).click()
-  await page.waitForFunction((n) => [...document.querySelectorAll("[data-slot=toast]")].filter((t) => t.textContent.includes("Found 4 boxes")).length > n, toasts, { timeout: 15_000 })
+  // The described design before it had 5 boxes and no picture; the sketch comes back as 4 boxes over the drawing.
+  // (The photo itself stays hidden from the check above, so look for its show/hide button.)
+  await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-box").length === 4 && document.querySelector("[aria-label$='the photo']"), null, { timeout: 15_000 })
 })
 
 await check("the command palette switches the theme", async () => {

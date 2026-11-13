@@ -12,6 +12,8 @@ type State = {
   history: Design[]
   future: Design[]
   selected: string | null
+  /** A box that was just added, whose name field takes focus so typing renames it. */
+  fresh: string | null
   session: SessionView | null
   samples: Sample[]
   tests: TestRow[]
@@ -28,7 +30,7 @@ type Actions = {
   edit(change: (design: Design) => Design, options?: { coalesce?: string }): void
   undo(): void
   redo(): void
-  select(id: string | null): void
+  select(id: string | null, options?: { fresh?: boolean }): void
   setSession(view: SessionView | null, samples?: Sample[]): void
   addSample(sample: Sample): void
   setTests(tests: TestRow[]): void
@@ -59,6 +61,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   history: [],
   future: [],
   selected: null,
+  fresh: null,
   session: null,
   samples: [],
   tests: [],
@@ -110,7 +113,7 @@ export const useApp = create<State & Actions>((set, get) => ({
     scheduleSave()
   },
 
-  select: (selected) => set({ selected }),
+  select: (selected, options) => set({ selected, fresh: options?.fresh ? selected : null }),
 
   setSession: (session, samples) => set(samples ? { session, samples: samples.slice(-KEEP) } : { session }),
 

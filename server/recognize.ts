@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { KINDS } from "../shared/catalog.ts"
 import type { Design } from "../shared/design.ts"
-import { fromSketch, layout, sketchSchema, type Sketch } from "../shared/normalize.ts"
+import { connectAll, fromSketch, layout, sketchSchema, type Sketch } from "../shared/normalize.ts"
 
 export const DEFAULT_MODEL = "claude-opus-5-5"
 
@@ -24,8 +24,9 @@ export type Reader = {
 export const WIRE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["nodes", "edges"],
+  required: ["name", "nodes", "edges"],
   properties: {
+    name: { type: "string" },
     nodes: {
       type: "array",
       items: {
@@ -58,7 +59,9 @@ export const WIRE_SCHEMA = {
   },
 } as const
 
-export const SYSTEM = `You turn drawings of software systems (whiteboards, paper, napkins, screenshots of diagram tools) into boxes and arrows, or do the same from a written description.
+export const SYSTEM = `You turn drawings of software systems (whiteboards, paper, napkins, screenshots of diagram tools) into boxes and arrows.
+
+name: a short title for the whole system, 2 to 5 words, like "URL shortener" or "Photo sharing app". Use the drawing's own title if it has one.
 
 Nodes: every box, cylinder, cloud, stick figure or labelled shape that stands for a part of the system. Text that only labels an arrow is not a node. Ignore titles, sticky notes, to-do notes, legends and anything crossed out.
 - ref: a short id you make up (n1, n2, ...), unique.
@@ -81,16 +84,56 @@ Edges: one per arrow or connecting line, from the box at its tail to the box at 
 
 If there is no system diagram at all, return empty lists.`
 
+export const DESIGN_SYSTEM = `You are a senior backend engineer. Someone describes a system in their own words; you design a clear, realistic architecture for it as boxes and arrows. Redline will run every box as a real container and load-test it, so the design must be one it can run.
+
+The kinds of box Redline runs:
+  client: the users or apps sending requests. Exactly one.
+  cdn: an edge cache for static files and repeat reads (images, skins, downloads).
+  loadbalancer: a load balancer or API gateway that spreads requests over the services behind it.
+  service: application code that handles requests.
+  worker: background code that takes jobs from a queue.
+  queue: a job queue or event stream (Kafka, SQS, Redis Streams).
+  cache: Redis or Memcached.
+  database: a database such as PostgreSQL.
+  external: a third-party service the team doesn't run (payments, email, push notifications, object storage).
+
+Each arrow is a request or a job, from the box that sends it to the box that handles it. Only these arrows work:
+  client -> cdn, loadbalancer or service
+  cdn -> loadbalancer or service (where it fetches what it doesn't have)
+  loadbalancer -> service
+  service -> service, loadbalancer, cache, database, queue or external
+  worker -> cache, database, queue, external or service
+  queue -> worker
+
+Rules:
+- Every box must be reachable from the client by following arrows. No box may float on its own: a CDN must point at what it caches, a queue at the worker that drains it, and every cache, database and external service must be used by some service or worker.
+- Keep it readable: 6 to 13 boxes. Use one box per distinct job under load, not per screen or feature. Group related features into one service ("Shop" serves the store and skins; "Profile" serves settings and region). Split a cache or database only when the description gives a reason, like leaderboards needing their own Redis.
+- Don't add what wasn't asked for and isn't needed for the system to work (analytics warehouses, admin panels, monitoring).
+- Real-time traffic that isn't request and answer (game servers over UDP, video calls) can't be load-tested here. Model the parts around it that are, like matchmaking and saving results, and leave the rest out.
+- No loops of service calls.
+- label: 1 to 3 words, at most 20 characters, without the kind repeated or technology in brackets: "Matchmaking", "Shop", "Player DB", "Leaderboard cache".
+- name: what the system is, 2 to 5 words, like "Battle royale backend". Never a sentence or the description itself.
+- replicas: 2 or 3 for stateless services that obviously take heavy traffic, otherwise null.
+- box: 0 for all four.
+- ref: n1, n2, ...
+
+If the description isn't a software system at all, return empty lists and an empty name.`
+
 function prompt(input: { image?: Image; text?: string }) {
   if (input.image) return `This image is ${input.image.width} × ${input.image.height} pixels. List its boxes and arrows.`
-  return `Describe this system as boxes and arrows:\n\n${input.text}`
+  return `Design this system as boxes and arrows:\n\n${input.text}`
+}
+
+function systemFor(input: { image?: Image; text?: string }) {
+  return input.image ? SYSTEM : DESIGN_SYSTEM
 }
 
 type WireNode = { ref: string; label: string; kind: string; box: { x: number; y: number; w: number; h: number }; replicas: number | null }
 
 export function fromWire(value: unknown): Sketch {
-  const wire = value as { nodes?: WireNode[]; edges?: { from: string; to: string }[] }
+  const wire = value as { name?: string; nodes?: WireNode[]; edges?: { from: string; to: string }[] }
   return sketchSchema.parse({
+    name: typeof wire.name === "string" ? wire.name.slice(0, 200) : null,
     nodes: (wire.nodes ?? []).slice(0, 40).map((node) => ({
       ref: String(node.ref).slice(0, 60),
       label: String(node.label ?? "").slice(0, 60),
@@ -102,11 +145,17 @@ export function fromWire(value: unknown): Sketch {
   })
 }
 
-export function toDesign(sketch: Sketch, input: { image?: Image; text?: string }, photoId?: string): Design {
-  if (input.image && photoId) {
-    return fromSketch(sketch, { id: photoId, width: input.image.width, height: input.image.height }, "Whiteboard sketch")
-  }
-  return layout(fromSketch(sketch, undefined, "Described system"))
+/**
+ * Turns a reading into a design. Boxes nothing would reach get connected (`added` lists those arrows,
+ * so the page can say so). A photo keeps the boxes where they were drawn; a description is laid out.
+ */
+export function toDesign(sketch: Sketch, input: { image?: Image; text?: string }, photoId?: string): { design: Design; added: number } {
+  const drawn = input.image && photoId
+  const raw = drawn
+    ? fromSketch(sketch, { id: photoId, width: input.image!.width, height: input.image!.height }, "Whiteboard sketch")
+    : fromSketch(sketch, undefined, "New system")
+  const { design, added } = connectAll(raw)
+  return { design: drawn ? design : layout(design), added: added.length }
 }
 
 /** On Windows, npm installs claude behind a .cmd wrapper that Node can't start without a shell. */
@@ -140,7 +189,7 @@ export function cliReader(bin: string, model = process.env.REDLINE_MODEL ?? DEFA
           "--output-format", "stream-json",
           "--verbose",
           "--model", model,
-          "--system-prompt", SYSTEM,
+          "--system-prompt", systemFor(input),
           "--json-schema", JSON.stringify(WIRE_SCHEMA),
           "--tools", "",
           "--strict-mcp-config",
@@ -195,7 +244,7 @@ export function apiReader(client = new Anthropic(), model = process.env.REDLINE_
           max_tokens: 16_000,
           betas: ["server-side-fallback-2026-07-01"],
           fallbacks: "default",
-          system: SYSTEM,
+          system: systemFor(input),
           output_config: { format: { type: "json_schema", schema: WIRE_SCHEMA as unknown as Record<string, unknown> } },
           messages: [{ role: "user", content }],
         },

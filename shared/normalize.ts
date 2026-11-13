@@ -1,11 +1,13 @@
+import { Graph, layout as dagreLayout } from "@dagrejs/dagre"
 import { z } from "zod"
 import { KINDS, edgeRole, type Kind } from "./catalog.ts"
-import { DEFAULT_WORKLOAD, edgeId, uniqueId, type Design, type DesignEdge, type DesignNode } from "./design.ts"
+import { DEFAULT_WORKLOAD, edgeId, nodeSettings, uniqueId, type Design, type DesignEdge, type DesignNode } from "./design.ts"
 
 export const NODE_WIDTH = 200
 export const NODE_HEIGHT = 60
 
 export const sketchSchema = z.object({
+  name: z.string().max(200).nullish(),
   nodes: z
     .array(
       z.object({
@@ -128,7 +130,7 @@ export function fromSketch(sketch: Sketch, photo?: { id: string; width: number; 
   }
 
   return {
-    name,
+    name: cleanName(sketch.name, name),
     nodes,
     edges,
     workload: { ...DEFAULT_WORKLOAD },
@@ -136,34 +138,153 @@ export function fromSketch(sketch: Sketch, photo?: { id: string; width: number; 
   }
 }
 
-export function layout(design: Design): Design {
-  const rank = new Map<string, number>()
-  const client = design.nodes.find((node) => node.kind === "client")
-  const order: string[] = []
-  if (client) {
-    rank.set(client.id, 0)
-    order.push(client.id)
+/** A short title: no trailing punctuation, first letter capitalised, cut at a word. */
+export function cleanName(name: string | null | undefined, fallback: string) {
+  let text = (name ?? "").replace(/\s+/g, " ").trim().replace(/[.:;,!?-]+$/, "")
+  if (!text) return fallback
+  if (text.length > 48) text = text.slice(0, 48).replace(/\s+\S*$/, "")
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+const FILLER = new Set(["the", "and", "for", "with", "service", "server", "svc", "api", "app", "backend", "database", "cache", "queue", "worker", "store"])
+
+function words(label: string) {
+  return new Set(
+    label
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((word) => word.replace(/(es|s)$/, ""))
+      .filter((word) => word.length > 2 && !FILLER.has(word)),
+  )
+}
+
+function affinity(a: DesignNode, b: DesignNode) {
+  const left = words(a.label)
+  let shared = 0
+  for (const word of words(b.label)) if (left.has(word)) shared++
+  return shared
+}
+
+// Who should send requests to a box that nothing reaches, most likely first.
+const CALLERS: Partial<Record<Kind, Kind[]>> = {
+  cdn: ["client"],
+  loadbalancer: ["client", "cdn", "service"],
+  service: ["loadbalancer", "client", "service", "cdn"],
+  queue: ["service", "worker"],
+  worker: ["queue"],
+  cache: ["service", "worker"],
+  database: ["service", "worker"],
+  external: ["service", "worker"],
+}
+const FIX_ORDER: Kind[] = ["cdn", "loadbalancer", "service", "queue", "worker", "cache", "database", "external"]
+
+function pick(target: DesignNode, candidates: DesignNode[], kinds: Kind[]) {
+  const scored = candidates
+    .filter((c) => c.id !== target.id && kinds.includes(c.kind))
+    .map((c) => ({
+      c,
+      score: affinity(c, target) * 100 - kinds.indexOf(c.kind) * 10 - Math.hypot(c.x - target.x, c.y - target.y) / 1000,
+    }))
+    .sort((a, b) => b.score - a.score)
+  return scored[0]?.c
+}
+
+/**
+ * Makes sure every box takes part. A CDN or load balancer gets the service behind it, a worker gets its
+ * queue, and a box nothing reaches gets an arrow from the most likely caller: one whose name shares a
+ * word with it ("Skins CDN" → "Skins service"), otherwise the nearest box of a kind that would call it.
+ */
+export function connectAll(design: Design): { design: Design; added: DesignEdge[] } {
+  const nodes = design.nodes
+  const edges = [...design.edges]
+  const added: DesignEdge[] = []
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const valid = (e: DesignEdge) => {
+    const a = byId.get(e.from)
+    const b = byId.get(e.to)
+    return !!a && !!b && edgeRole(a.kind, b.kind) !== null
   }
-  for (let i = 0; i < order.length; i++) {
-    const id = order[i]!
-    for (const edge of design.edges) {
-      if (edge.from !== id || rank.has(edge.to)) continue
-      rank.set(edge.to, rank.get(id)! + 1)
-      order.push(edge.to)
+  const add = (from: DesignNode, to: DesignNode) => {
+    const id = edgeId(from.id, to.id)
+    if (edges.some((e) => e.id === id) || edgeRole(from.kind, to.kind) === null) return false
+    const edge = { id, from: from.id, to: to.id }
+    edges.push(edge)
+    added.push(edge)
+    return true
+  }
+  const outs = (node: DesignNode) => edges.filter((e) => e.from === node.id && valid(e)).map((e) => byId.get(e.to)!)
+  const ins = (node: DesignNode) => edges.filter((e) => e.to === node.id && valid(e)).map((e) => byId.get(e.from)!)
+
+  for (const node of nodes) {
+    if (node.kind === "cdn" && !outs(node).some((n) => n.kind === "service" || n.kind === "loadbalancer")) {
+      const target = pick(node, nodes, ["service", "loadbalancer"])
+      const lb = nodes.find((n) => n.kind === "loadbalancer")
+      const best = target && affinity(node, target) > 0 ? target : (lb ?? target)
+      if (best) add(node, best)
+    }
+    if (node.kind === "loadbalancer" && !outs(node).some((n) => n.kind === "service")) {
+      const free = nodes.filter((n) => n.kind === "service" && ins(n).length === 0)
+      const target = pick(node, free.length ? free : nodes, ["service"])
+      if (target) add(node, target)
+    }
+    if (node.kind === "worker" && !ins(node).some((n) => n.kind === "queue")) {
+      const queue = pick(node, nodes, ["queue"])
+      if (queue) add(queue, node)
     }
   }
-  for (const node of design.nodes) if (!rank.has(node.id)) rank.set(node.id, 0)
-
-  const columns = new Map<number, DesignNode[]>()
-  for (const node of design.nodes) {
-    const r = rank.get(node.id)!
-    columns.set(r, [...(columns.get(r) ?? []), node])
+  for (const queue of nodes.filter((n) => n.kind === "queue" && outs(n).length === 0)) {
+    const idle = nodes.find((n) => n.kind === "worker" && !ins(n).some((m) => m.kind === "queue"))
+    if (idle) add(queue, idle)
   }
+
+  const client = nodes.find((node) => node.kind === "client")
+  if (client) {
+    for (let round = 0; round < nodes.length; round++) {
+      const reached = new Set([client.id])
+      const todo = [client.id]
+      while (todo.length) {
+        for (const e of edges) {
+          if (e.from === todo[0] && valid(e) && !reached.has(e.to)) {
+            reached.add(e.to)
+            todo.push(e.to)
+          }
+        }
+        todo.shift()
+      }
+      const lost = nodes.filter((n) => !reached.has(n.id) && n.kind !== "client")
+      if (!lost.length) break
+      // Fix the box at the front of each lost group first: its own callers may be lost too.
+      const fronts = lost.filter((n) => !ins(n).some((m) => !reached.has(m.id)))
+      const order = (fronts.length ? fronts : lost).sort((a, b) => FIX_ORDER.indexOf(a.kind) - FIX_ORDER.indexOf(b.kind))
+      const fixed = order.some((node) => {
+        const caller = pick(node, nodes.filter((n) => reached.has(n.id)), CALLERS[node.kind] ?? [])
+        return caller ? add(caller, node) : false
+      })
+      if (!fixed) break
+    }
+  }
+  return { design: added.length ? { ...design, edges } : design, added }
+}
+
+/** Lays boxes out left to right in the order requests flow, keeping crossings down. */
+export function layout(design: Design): Design {
+  if (design.nodes.length === 0) return design
+  const g = new Graph()
+  g.setGraph({ rankdir: "LR", nodesep: 26, ranksep: 96, edgesep: 12, marginx: 0, marginy: 0 })
+  g.setDefaultEdgeLabel(() => ({}))
+  for (const node of design.nodes) {
+    const copies = Math.min(2, nodeSettings(node).replicas - 1)
+    g.setNode(node.id, { width: NODE_WIDTH + copies * 4, height: NODE_HEIGHT + copies * 4 })
+  }
+  const ids = new Set(design.nodes.map((node) => node.id))
+  for (const edge of design.edges) {
+    if (ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to) g.setEdge(edge.from, edge.to, { weight: 1, minlen: 1 })
+  }
+  dagreLayout(g)
   const placed = new Map<string, { x: number; y: number }>()
-  for (const [r, column] of columns) {
-    column.forEach((node, i) => {
-      placed.set(node.id, { x: r * (NODE_WIDTH + 96), y: (i - (column.length - 1) / 2) * (NODE_HEIGHT + 64) })
-    })
+  for (const node of design.nodes) {
+    const at = g.node(node.id)
+    placed.set(node.id, { x: Math.round((at.x ?? 0) - NODE_WIDTH / 2), y: Math.round((at.y ?? 0) - NODE_HEIGHT / 2) })
   }
   return { ...design, nodes: design.nodes.map((node) => ({ ...node, ...placed.get(node.id)! })) }
 }

@@ -27,12 +27,24 @@ describe("reading Claude's answer", () => {
 
   it("keeps the photo's coordinates for a photo, and lays out a description", () => {
     const sketch = fromWire(wire)
-    const fromPhoto = toDesign(sketch, { image: { data: "x", mediaType: "image/png", width: 600, height: 100 } }, "0123456789abcdef")
+    const fromPhoto = toDesign(sketch, { image: { data: "x", mediaType: "image/png", width: 600, height: 100 } }, "0123456789abcdef").design
     expect(fromPhoto.photo).toEqual({ id: "0123456789abcdef", width: 600, height: 100 })
     expect(fromPhoto.edges.map((e) => e.id)).toEqual(["users->api", "api->postgres"])
-    const fromText = toDesign(sketch, { text: "users, api, postgres" })
+    expect(fromPhoto.name).toBe("Whiteboard sketch")
+    const fromText = toDesign(sketch, { text: "users, api, postgres" }).design
     expect(fromText.photo).toBeUndefined()
     expect(fromText.nodes.find((n) => n.id === "postgres")!.x).toBeGreaterThan(fromText.nodes.find((n) => n.id === "api")!.x)
+  })
+
+  it("uses Claude's short title for the design, and says how many arrows it had to add", () => {
+    const named = fromWire({
+      ...wire,
+      name: "game backend",
+      nodes: [...wire.nodes, { ref: "n4", label: "Assets CDN", kind: "cdn", box: { x: 0, y: 0, w: 0, h: 0 }, replicas: null }],
+    })
+    const { design, added } = toDesign(named, { text: "a game" })
+    expect(design.name).toBe("Game backend")
+    expect(added).toBe(2)
   })
 
   it("sends a schema structured outputs accept: closed objects, no number or length limits", () => {

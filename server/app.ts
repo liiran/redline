@@ -227,14 +227,15 @@ export class App {
         throw new HttpError(502, error instanceof Error ? error.message : String(error))
       })
       const photoId = input.image ? store.savePhoto(Buffer.from(input.image.data, "base64"), input.image.mediaType) : undefined
-      const design = toDesign(reading.sketch, input, photoId)
+      const { design, added } = toDesign(reading.sketch, input, photoId)
       return this.#json(res, 200, {
         design,
         ms: Date.now() - started,
         model: reading.model,
         costUsd: reading.costUsd,
-        boxes: reading.sketch.nodes.length,
-        arrows: reading.sketch.edges.length,
+        boxes: design.nodes.length,
+        arrows: design.edges.length - added,
+        added,
       })
     }
 

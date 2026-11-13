@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { edgeRole, settingsFor } from "./catalog.ts"
+import { edgeRole, settingsFor, type Kind } from "./catalog.ts"
 import { designSchema, slug, uniqueId, type Design } from "./design.ts"
-import { fromSketch, guessKind, layout, orientEdges } from "./normalize.ts"
+import { NODE_HEIGHT, NODE_WIDTH, cleanName, connectAll, fromSketch, guessKind, layout, orientEdges } from "./normalize.ts"
 import { TEMPLATES, template } from "./templates.ts"
 import { canRun, containerCount, cpuBudget, validate } from "./validate.ts"
 
@@ -167,5 +167,60 @@ describe("reading a sketch", () => {
     expect(x("users")).toBeLessThan(x("orders"))
     expect(x("orders")).toBeLessThan(x("jobs"))
     expect(x("jobs")).toBeLessThan(x("mailer"))
+  })
+
+  it("never puts two boxes on top of each other", () => {
+    for (const slug of ["url-shortener", "cached-feed", "checkout", "microservices"]) {
+      const d = layout(template(slug))
+      for (const a of d.nodes) {
+        for (const b of d.nodes) {
+          if (a === b) continue
+          const apart = Math.abs(a.x - b.x) >= NODE_WIDTH || Math.abs(a.y - b.y) >= NODE_HEIGHT
+          expect(apart, `${slug}: ${a.id} overlaps ${b.id}`).toBe(true)
+        }
+      }
+    }
+  })
+})
+
+describe("connecting every box", () => {
+  const box = (ref: string, label: string, kind: Kind) => ({ ref, label, kind, box: [0, 0, 0, 0], replicas: null })
+
+  it("gives a floating CDN the service whose name it shares, and lets users reach it", () => {
+    const raw = fromSketch({
+      nodes: [box("u", "Players", "client"), box("g", "Gateway", "loadbalancer"), box("s", "Skins service", "service"), box("p", "Profile", "service"), box("c", "Skins CDN", "cdn")],
+      edges: [{ from: "u", to: "g" }, { from: "g", to: "s" }, { from: "g", to: "p" }],
+    })
+    const { design, added } = connectAll(raw)
+    expect(added.map((e) => e.id).sort()).toEqual(["players->skins-cdn", "skins-cdn->skins-service"])
+    expect(validate(design).filter((i) => i.message.includes("No traffic"))).toEqual([])
+  })
+
+  it("hangs a stray database off the service it belongs to, and a worker off a queue", () => {
+    const raw = fromSketch({
+      nodes: [
+        box("u", "Users", "client"),
+        box("a", "Orders", "service"),
+        box("b", "Leaderboard", "service"),
+        box("d", "Leaderboard DB", "database"),
+        box("q", "Jobs", "queue"),
+        box("w", "Mailer", "worker"),
+      ],
+      edges: [{ from: "u", to: "a" }, { from: "u", to: "b" }, { from: "a", to: "q" }],
+    })
+    const { design, added } = connectAll(raw)
+    expect(added.map((e) => e.id).sort()).toEqual(["jobs->mailer", "leaderboard->leaderboard-db"])
+    expect(canRun(validate(design))).toBe(true)
+  })
+
+  it("leaves a connected design alone", () => {
+    const d = template("checkout")
+    expect(connectAll(d).added).toEqual([])
+  })
+
+  it("summarises the name instead of keeping a long one", () => {
+    expect(cleanName("battle royale backend.", "x")).toBe("Battle royale backend")
+    expect(cleanName("  ", "New system")).toBe("New system")
+    expect(cleanName("a".repeat(30) + " " + "b".repeat(30), "x").length).toBeLessThanOrEqual(48)
   })
 })

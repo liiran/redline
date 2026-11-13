@@ -49,7 +49,7 @@ export type TestRow = {
   result: RampResult
 }
 
-export type Reading = { design: Design; ms: number; model: string; costUsd: number | null; boxes: number; arrows: number }
+export type Reading = { design: Design; ms: number; model: string; costUsd: number | null; boxes: number; arrows: number; added: number }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const write = method !== "GET"
