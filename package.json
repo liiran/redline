@@ -16,7 +16,8 @@
     "test:go": "node scripts/go-test.mjs",
     "test:docker": "vitest run --config vitest.docker.config.ts",
     "e2e": "node e2e/ui.mjs",
-    "eval": "node --disable-warning=ExperimentalWarning eval/run.ts"
+    "eval": "node --disable-warning=ExperimentalWarning eval/run.ts",
+    "bench": "node --disable-warning=ExperimentalWarning bench/capacity.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

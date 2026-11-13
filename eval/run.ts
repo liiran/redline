@@ -4,7 +4,7 @@
 //   node eval/run.ts                 all cases (uses your Claude Code sign-in, about $0.01 each)
 //   node eval/run.ts --limit 6       the first six
 //   node eval/run.ts --render-only   only write the pictures to eval/out, no model calls
-import { existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { chromium } from "playwright-core"
 import type { Design } from "../shared/design.ts"
@@ -17,6 +17,7 @@ const args = process.argv.slice(2)
 const limit = Number(args[args.indexOf("--limit") + 1]) || 48
 const from = Number(args[args.indexOf("--from") + 1]) || 0
 const renderOnly = args.includes("--render-only")
+const reportOnly = args.includes("--report")
 const out = join(import.meta.dirname, "out")
 mkdirSync(out, { recursive: true })
 
@@ -26,6 +27,21 @@ const chrome = [process.env.CHROME_PATH, "C:/Program Files/Google/Chrome/Applica
 if (!chrome) throw new Error("Chrome wasn't found. Set CHROME_PATH.")
 
 const cases = Array.from({ length: limit }, (_, i) => makeCase(from + i))
+
+// Re-scores answers saved by an earlier run, so the report can change without paying for new readings.
+if (reportOnly) {
+  const stored: Score[] = []
+  let model = "unknown"
+  for (const c of cases) {
+    const file = join(out, `${c.id}.json`)
+    if (!existsSync(file)) continue
+    const saved = JSON.parse(readFileSync(file, "utf8"))
+    model = saved.model ?? "claude-opus-5-5"
+    stored.push({ id: c.id, notes: c.notes, ms: saved.score.ms, costUsd: saved.score.costUsd, ...score(c, saved.design) })
+  }
+  writeReport(stored, model, "cli")
+  process.exit(0)
+}
 const browser = await chromium.launch({ executablePath: chrome })
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
 const images = new Map<string, Buffer>()
@@ -129,7 +145,7 @@ async function worker() {
       const design = toDesign(reading.sketch, { image }, "0000000000000000")
       const s = { id: c.id, notes: c.notes, ms: Date.now() - started, costUsd: reading.costUsd ?? 0, ...score(c, design) }
       scores.push(s)
-      writeFileSync(join(out, `${c.id}.json`), JSON.stringify({ truth: { nodes: c.nodes, edges: c.edges }, sketch: reading.sketch, design, score: s }, null, 2))
+      writeFileSync(join(out, `${c.id}.json`), JSON.stringify({ model: reading.model, truth: { nodes: c.nodes, edges: c.edges }, sketch: reading.sketch, design, score: s }, null, 2))
       console.log(
         `${c.id}  ${s.exact ? "exact " : "      "} nodes ${s.found}/${s.truthNodes}${s.extra ? ` +${s.extra}` : ""}  kinds ${s.kindsRight}/${s.truthNodes}  arrows ${s.edgesRight}/${s.truthEdges}${s.edgesExtra ? ` +${s.edgesExtra}` : ""}  ${(s.ms / 1000).toFixed(1)} s  (${c.notes.join(", ")})`,
       )
@@ -143,34 +159,56 @@ async function worker() {
 await Promise.all([worker(), worker(), worker()])
 scores.sort((a, b) => a.id.localeCompare(b.id))
 
-const sum = (f: (s: Score) => number) => scores.reduce((a, s) => a + f(s), 0)
-const pct = (a: number, b: number) => `${b ? ((a / b) * 100).toFixed(1) : "0"}%`
-const times = scores.map((s) => s.ms).sort((a, b) => a - b)
-const stacked = scores.filter((s) => s.replicasRight !== null)
-const lines = [
-  `# How well Redline reads drawings`,
-  ``,
-  `${scores.length} synthetic hand-drawn sketches (eval/cases.ts), read by ${reader.model} via ${reader.name === "cli" ? "Claude Code" : "the API"} on ${new Date().toISOString().slice(0, 10)}.`,
-  ``,
-  `| Measure | Result |`,
-  `| --- | --- |`,
-  `| Sketches read exactly right (every box, kind and arrow) | ${scores.filter((s) => s.exact).length} of ${scores.length} (${pct(scores.filter((s) => s.exact).length, scores.length)}) |`,
-  `| Designs that can run as read | ${pct(scores.filter((s) => s.runnable).length, scores.length)} |`,
-  `| Boxes found | ${pct(sum((s) => s.found), sum((s) => s.truthNodes))} |`,
-  `| Boxes made up | ${sum((s) => s.extra)} |`,
-  `| Kinds right | ${pct(sum((s) => s.kindsRight), sum((s) => s.truthNodes))} |`,
-  `| Arrows right | ${pct(sum((s) => s.edgesRight), sum((s) => s.truthEdges))} |`,
-  `| Arrows made up | ${sum((s) => s.edgesExtra)} |`,
-  `| Stacked copies counted right | ${stacked.filter((s) => s.replicasRight).length} of ${stacked.length} |`,
-  `| Box position overlap (mean IoU) | ${(sum((s) => s.meanIou) / scores.length).toFixed(2)} |`,
-  `| Time per sketch (median, p90) | ${(times[Math.floor(times.length / 2)]! / 1000).toFixed(1)} s, ${(times[Math.floor(times.length * 0.9)]! / 1000).toFixed(1)} s |`,
-  `| Cost (all sketches) | $${sum((s) => s.costUsd).toFixed(2)} |`,
-  ``,
-  `## Misses`,
-  ``,
-  ...scores
-    .filter((s) => !s.exact)
-    .map((s) => `- ${s.id} (${s.notes.join(", ")}): ${s.error ?? `boxes ${s.found}/${s.truthNodes}${s.extra ? ` +${s.extra} extra` : ""}, kinds ${s.kindsRight}/${s.truthNodes}, arrows ${s.edgesRight}/${s.truthEdges}${s.edgesExtra ? ` +${s.edgesExtra} extra` : ""}${s.replicasRight === false ? ", copies wrong" : ""}`}`),
-]
-writeFileSync(join(import.meta.dirname, "results.md"), lines.join("\n") + "\n")
-console.log(`\n${lines.slice(4, 17).join("\n")}\n\nWrote eval/results.md`)
+writeReport(scores, reader.model, reader.name)
+
+function writeReport(all: Score[], model: string, via: string) {
+  all.sort((a, b) => a.id.localeCompare(b.id))
+  const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(1)}%` : "–")
+  const groups: [string, Score[]][] = [
+    ["All", all],
+    ["Clean", all.filter((s) => !s.notes.includes("hard"))],
+    ["Hard", all.filter((s) => s.notes.includes("hard"))],
+  ]
+  const row = (label: string, f: (g: Score[]) => string) => `| ${label} | ${groups.map(([, g]) => (g.length ? f(g) : "–")).join(" | ")} |`
+  const sum = (g: Score[], f: (s: Score) => number) => g.reduce((a, s) => a + f(s), 0)
+  const quantile = (g: Score[], q: number) => {
+    const times = g.map((s) => s.ms).sort((a, b) => a - b)
+    return `${(times[Math.min(times.length - 1, Math.floor(times.length * q))]! / 1000).toFixed(1)} s`
+  }
+  const lines = [
+    `# How well Redline reads drawings`,
+    ``,
+    `${all.length} synthetic hand-drawn sketches from eval/cases.ts, read by ${model} via ${via === "cli" ? "Claude Code" : "the API"}.`,
+    `Clean sketches are flat and sharp. Hard ones are tilted, blurred, saved as JPEG, have glare, and carry decoys that must not`,
+    `become boxes: a title, words on arrows, a sticky note and a crossed-out box. Some are 8-box systems.`,
+    ``,
+    `| Measure | ${groups.map(([name, g]) => `${name} (${g.length})`).join(" | ")} |`,
+    `| --- | ${groups.map(() => "---").join(" | ")} |`,
+    row("Read exactly right (every box, kind and arrow)", (g) => `${g.filter((s) => s.exact).length} (${pct(g.filter((s) => s.exact).length, g.length)})`),
+    row("Runnable as read", (g) => pct(g.filter((s) => s.runnable).length, g.length)),
+    row("Boxes found", (g) => pct(sum(g, (s) => s.found), sum(g, (s) => s.truthNodes))),
+    row("Boxes made up", (g) => String(sum(g, (s) => s.extra))),
+    row("Kinds right", (g) => pct(sum(g, (s) => s.kindsRight), sum(g, (s) => s.truthNodes))),
+    row("Arrows right", (g) => pct(sum(g, (s) => s.edgesRight), sum(g, (s) => s.truthEdges))),
+    row("Arrows made up", (g) => String(sum(g, (s) => s.edgesExtra))),
+    row("Stacked copies counted right", (g) => {
+      const stacked = g.filter((s) => s.replicasRight !== null)
+      return `${stacked.filter((s) => s.replicasRight).length} of ${stacked.length}`
+    }),
+    row("Box position overlap (mean IoU)", (g) => (sum(g, (s) => s.meanIou) / g.length).toFixed(2)),
+    row("Time per sketch (median)", (g) => quantile(g, 0.5)),
+    row("Time per sketch (p90)", (g) => quantile(g, 0.9)),
+    row("Cost", (g) => `$${sum(g, (s) => s.costUsd).toFixed(2)}`),
+    ``,
+    `## Every miss`,
+    ``,
+    ...all
+      .filter((s) => !s.exact || s.replicasRight === false)
+      .map(
+        (s) =>
+          `- ${s.id} (${s.notes.join(", ")}): ${s.error ?? `boxes ${s.found}/${s.truthNodes}${s.extra ? ` +${s.extra} extra` : ""}, kinds ${s.kindsRight}/${s.truthNodes}, arrows ${s.edgesRight}/${s.truthEdges}${s.edgesExtra ? ` +${s.edgesExtra} extra` : ""}${s.replicasRight === false ? ", stacked copies miscounted" : ""}`}`,
+      ),
+  ]
+  writeFileSync(join(import.meta.dirname, "results.md"), lines.join("\n") + "\n")
+  console.log(`\n${lines.slice(6, 20).join("\n")}\n\nWrote eval/results.md`)
+}

@@ -143,6 +143,7 @@ function Workspace() {
 export function App() {
   const design = useApp((s) => s.design)
   const session = useApp((s) => s.session)
+  const status = useApp((s) => s.status)
   const theme = useApp((s) => s.theme)
   const edit = useApp((s) => s.edit)
   const [sketch, setSketch] = useState(false)
@@ -220,6 +221,12 @@ export function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (status?.docker.ok !== false) return
+    const timer = setInterval(() => api.status().then((next) => useApp.getState().setStatus(next)).catch(() => {}), 5000)
+    return () => clearInterval(timer)
+  }, [status?.docker.ok])
+
   const running = session && (session.phase === "ready" || session.phase === "starting")
 
   return (
@@ -259,7 +266,7 @@ export function App() {
               <Square aria-hidden /> Stop
             </Button>
           ) : (
-            <Button className="btn sm primary" onClick={run}>
+            <Button className="btn sm primary" onClick={run} disabled={status?.docker.ok === false}>
               <Play aria-hidden /> Run
             </Button>
           ))}
