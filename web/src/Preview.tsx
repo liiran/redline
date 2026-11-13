@@ -24,9 +24,14 @@ export function Preview({ design }: { design: Design }) {
         const d = arrow?.path ?? `M ${a.x + a.w / 2} ${a.y + a.h / 2} L ${b.x + b.w / 2} ${b.y + b.h / 2}`
         return <path key={edge.id} d={d} className="preview-edge" />
       })}
-      {design.nodes.map((n) => (
-        <rect key={n.id} x={n.x} y={n.y} width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="preview-box" data-kind={n.kind} />
-      ))}
+      {design.nodes.map((n) =>
+        n.kind === "client" ? (
+          // Users are a circle where the arrows start, not a box.
+          <circle key={n.id} cx={n.x + NODE_WIDTH - NODE_HEIGHT / 2} cy={n.y + NODE_HEIGHT / 2} r={NODE_HEIGHT / 2} className="preview-box" data-kind="client" />
+        ) : (
+          <rect key={n.id} x={n.x} y={n.y} width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="preview-box" data-kind={n.kind} />
+        ),
+      )}
     </svg>
   )
 }

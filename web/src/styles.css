@@ -1144,8 +1144,8 @@ kbd,
   vector-effect: non-scaling-stroke;
 
   &[data-kind="client"] {
-    fill: var(--ink);
-    stroke: var(--ink);
+    fill: var(--surface);
+    stroke: var(--muted);
   }
 
   &[data-kind="database"],
