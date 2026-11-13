@@ -454,7 +454,7 @@ function DropMenu({ drop, design, onClose }: { drop: Drop; design: Design; onClo
 /** The start page's sample: users, two API replicas, Redis in front of Postgres. Three columns, so it reads at full size. */
 function sampleDesign(): Design {
   const feed = template("cached-feed")
-  return layout({
+  const laid = layout({
     ...feed,
     nodes: feed.nodes.filter((n) => n.id !== "lb"),
     edges: [
@@ -463,6 +463,10 @@ function sampleDesign(): Design {
       { id: "api->postgres", from: "api", to: "postgres" },
     ],
   })
+  // Columns closer together than the editor's, so the sample can be drawn bigger in its space.
+  const step = NODE_WIDTH + 112
+  const tight = NODE_WIDTH + 56
+  return { ...laid, nodes: laid.nodes.map((n) => ({ ...n, x: Math.round((n.x / step) * tight) })) }
 }
 
 /**
@@ -558,7 +562,9 @@ export function SampleCanvas() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.08, maxZoom: 1.2 }}
+        className="sample-flow"
+        fitViewOptions={{ padding: 0.01, maxZoom: 1.4, minZoom: 0.1 }}
+        minZoom={0.1}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
@@ -570,9 +576,7 @@ export function SampleCanvas() {
         zoomOnDoubleClick={false}
         preventScrolling={false}
         proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-      </ReactFlow>
+      />
     </ReactFlowProvider>
   )
 }

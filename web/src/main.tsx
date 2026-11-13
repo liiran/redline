@@ -1,4 +1,6 @@
 import "./zod-config.ts"
+import "@fontsource-variable/bricolage-grotesque"
+import "@fontsource-variable/inter"
 import "@fontsource-variable/geist-mono"
 import "./styles.css"
 import { StrictMode } from "react"

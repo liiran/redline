@@ -2,35 +2,6 @@
 @import "@ui-sdk/core/web.css";
 @import "@xyflow/react/dist/base.css";
 
-/* General Sans by Indian Type Foundry, from Fontshare (ITF Free Font License: free for commercial use). */
-@font-face {
-  font-family: "General Sans";
-  src: url("./fonts/general-sans-400.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "General Sans";
-  src: url("./fonts/general-sans-500.woff2") format("woff2");
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "General Sans";
-  src: url("./fonts/general-sans-600.woff2") format("woff2");
-  font-weight: 600;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "General Sans";
-  src: url("./fonts/general-sans-700.woff2") format("woff2");
-  font-weight: 700;
-  font-display: swap;
-}
-
 :root {
   color-scheme: light dark;
   --ink: light-dark(#171717, #e6e4df);
@@ -56,7 +27,8 @@
   --radius: 8px;
   --radius-lg: 12px;
   --mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --sans: "General Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Bricolage Grotesque Variable", "Inter Variable", sans-serif;
 
   --ui-background: var(--surface);
   --ui-foreground: var(--ink);
@@ -624,7 +596,7 @@ kbd,
 .box-sub {
   overflow: hidden;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -794,57 +766,83 @@ kbd,
 
 .start {
   position: relative;
+  background-color: var(--paper);
+  background-image: radial-gradient(circle, var(--line) 1.2px, transparent 1.4px);
+  background-size: 20px 20px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   height: 100%;
   overflow-y: auto;
-  padding: clamp(64px, 9vh, 104px) 48px 40px;
+  padding: clamp(64px, 12vh, 128px) 48px 40px;
 }
 
 .start-inner {
-  display: grid;
-  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
-  align-items: center;
-  align-content: start;
-  gap: 40px 72px;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: 1320px;
+  max-width: 1248px;
   min-width: 0;
 }
 
+/* The headline, its second line stepped out like a break, with the running sample beside it. */
+.headline {
+  display: grid;
+  grid-template-columns: minmax(0, 620px) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 40px;
+  margin-bottom: clamp(32px, 6vh, 56px);
+
+  & .lede {
+    margin: 18px 0 0;
+  }
+}
+
+.hero {
+  & .hero-1,
+  & .hero-2 {
+    display: block;
+  }
+
+}
+
+.start-hero {
+  grid-column: 1;
+  min-width: 0;
+}
+
+/* The describe box, with sketch and upload stacked beside it. */
 .start-main {
   min-width: 0;
 }
 
-/* The running sample beside the describe box. It takes the page's colours, light or dark. */
+.start-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
+  gap: 12px;
+
+  & .ways {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 0;
+  }
+}
+
+/* The running sample, between the headline's two lines. */
 .sample-window {
   position: relative;
-  margin: 0;
+  margin: 0 -24px 0 0;
   min-width: 0;
-  height: 340px;
-  border-radius: 22px;
-  background: var(--paper);
-  box-shadow: var(--shadow-card), 0 30px 60px -36px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.8));
-  overflow: hidden;
+  height: clamp(190px, 26vh, 250px);
 }
 
-.sample-status {
-  position: absolute;
-  top: 16px;
-  left: 18px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12.5px;
+.sample-flow {
+  --xy-background-color: transparent;
+  background: transparent;
 }
 
-/* Examples sit under both columns, spread across the page. */
+/* Examples: one row of small cards under everything. */
 .start-examples {
-  grid-column: 1 / -1;
-  margin-top: 12px;
+  margin-top: clamp(28px, 5vh, 48px);
 
   & .start-label {
     margin: 0 0 14px;
@@ -885,11 +883,12 @@ kbd,
 }
 
 .hero {
-  margin: 0 0 8px;
-  font-size: clamp(32px, 3.8vw, 46px);
-  font-weight: 600;
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(40px, 4.8vw, 64px);
+  font-weight: 800;
   letter-spacing: -0.035em;
-  line-height: 1.05;
+  line-height: 1;
 
   & em {
     color: var(--red);
@@ -899,7 +898,7 @@ kbd,
 
 .lede {
   max-width: 480px;
-  margin: 14px 0 30px;
+  margin: 14px 0 clamp(28px, 5vh, 52px);
   color: var(--muted);
   font-size: 16px;
   line-height: 1.5;
@@ -924,8 +923,8 @@ kbd,
   }
 
   & textarea {
-    min-height: 84px;
-    padding: 16px 18px 6px;
+    min-height: 100px;
+    padding: 18px 20px 6px;
     border: 0;
     background: none;
     color: var(--ink);
@@ -1088,23 +1087,33 @@ kbd,
 /* One row of eight on a wide screen, so the whole page fits without scrolling. */
 .examples {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
 
-  /* Too narrow for a summary here; it shows on hover instead. */
-  & .card > span:not(.blank-icon) {
+  & .card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 8px 12px;
+  }
+
+  & .card-text {
+    padding: 0 4px;
+  }
+
+  & .card-text span {
     display: none;
   }
 }
 
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
   min-width: 0;
-  padding: 8px 8px 11px;
+  padding: 8px 14px 8px 8px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow-card);
   color: var(--ink);
@@ -1116,31 +1125,35 @@ kbd,
   &:hover {
     box-shadow:
       0 0 0 1px var(--line),
-      0 4px 14px -8px rgb(0 0 0 / 0.2);
+      0 6px 18px -8px rgb(0 0 0 / 0.2);
   }
+}
+
+.card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 
   & strong {
-    padding: 0 4px;
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 600;
   }
 
-  & > span:not(.blank-icon) {
+  & span {
     display: -webkit-box;
-    padding: 0 4px;
     overflow: hidden;
     color: var(--muted);
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.4;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
+    -webkit-line-clamp: 2;
   }
 }
 
 .preview {
   width: 100%;
-  height: 52px;
-  margin-bottom: 8px;
+  height: 58px;
   border-radius: 8px;
   background: var(--paper);
 }
@@ -1174,8 +1187,7 @@ kbd,
   & .blank-icon {
     display: grid;
     place-items: center;
-    height: 52px;
-    margin-bottom: 8px;
+    height: 58px;
     border: 1.5px dashed var(--line);
     border-radius: 8px;
     color: var(--muted);
@@ -1188,18 +1200,30 @@ kbd,
 }
 
 /* Short screens: a little less air, so the page still fits without scrolling. */
-@media (max-height: 760px) and (min-width: 961px) {
+@media (max-height: 820px) and (min-width: 961px) {
   .start {
     padding-top: 52px;
     padding-bottom: 24px;
   }
 
-  .sample-window {
-    height: 300px;
+  .headline {
+    margin-bottom: 24px;
   }
 
-  .lede {
-    margin-bottom: 22px;
+  .hero {
+    font-size: clamp(40px, 4.4vw, 56px);
+  }
+
+  .sample-window {
+    height: 180px;
+  }
+
+  .start-examples {
+    margin-top: 20px;
+  }
+
+  .prompt textarea {
+    min-height: 84px;
   }
 }
 
@@ -1210,15 +1234,22 @@ kbd,
 }
 
 @media (max-width: 960px) {
-  .start-inner {
+  .headline {
     grid-template-columns: minmax(0, 1fr);
-    gap: 32px;
   }
 
   .sample-window {
-    height: 300px;
+    height: 220px;
+    margin: 20px 0 0;
   }
 
+  .start-actions {
+    grid-template-columns: minmax(0, 1fr);
+
+    & .ways {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
 }
 
 @media (max-width: 720px) {
@@ -1226,11 +1257,15 @@ kbd,
     padding: 72px 16px 48px;
   }
 
+  .sample-window {
+    height: 170px;
+  }
+
   .examples {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .ways {
+  .start-actions .ways {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2329,4 +2364,28 @@ details.section.fold {
   .hide-narrow {
     display: none;
   }
+}
+
+/*
+ * Type, the way page-two pairs it: Bricolage Grotesque for titles and big numbers, Inter for the rest.
+ */
+.way strong,
+.card-text strong,
+.title-input,
+.title-text,
+.name-input,
+.section h2,
+.dialog-head h2,
+.capacity,
+.big .value,
+.stat .value,
+.drop-overlay {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.card-text strong,
+.way strong {
+  font-size: 14.5px;
 }

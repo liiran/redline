@@ -83,13 +83,13 @@ const rate = (text) => {
 
 let page = await newPage()
 
-await check("start page shows the pitch, three ways in, a running sample, seven examples and a blank canvas", async () => {
+await check("start page shows the pitch, three ways in, a running sample, six examples and a blank canvas", async () => {
   await page.getByRole("heading", { name: /Find where your system/ }).waitFor()
   await page.getByRole("textbox", { name: "Describe your system" }).waitFor()
   for (const name of [/Sketch it/, /Upload a photo/]) await page.getByRole("button", { name }).waitFor()
   await page.locator(".sample-window .box[data-status='hot']").waitFor()
-  expect((await page.locator(".examples .card").count()) === 8, "expected 7 examples and a blank canvas")
-  expect((await page.locator(".examples .card svg.preview").count()) === 7, "each example should show a preview")
+  expect((await page.locator(".examples .card").count()) === 7, "expected 6 examples and a blank canvas")
+  expect((await page.locator(".examples .card svg.preview").count()) === 6, "each example should show a preview")
 })
 
 await check("an example opens on the canvas with its boxes and arrows", async () => {

@@ -38,7 +38,7 @@ Take **Users → API → Postgres**.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/editor-dark.png">
-  <img alt="The battle royale example with the Shop box selected: its connections are highlighted and the side panel lists what it gets requests from and calls" src="docs/img/editor-light.png">
+  <img alt="The online store example with the Orders box selected: its connections are highlighted and the side panel lists what it gets requests from and calls" src="docs/img/editor-light.png">
 </picture>
 
 Click a box to see what it's connected to, rename it, or change what it is. Settings use the sizes and names real
@@ -52,8 +52,8 @@ CPU tops out near 500 requests a second” or “2 × 10 = 20 connections to Pos
 - **Connect to…** joins two boxes that are already there, in whichever direction requests can flow.
 - **Tidy up** lines everything up again. Arrows always find their way between boxes, never through them.
 
-There are seven examples to start from: a URL shortener, a cached feed, checkout, a chat app, a video platform, an online
-store and a battle royale game backend, plus a blank canvas. **Ctrl K** finds every command.
+There are six examples to start from: a URL shortener, a cached feed, checkout, a chat app, a video platform and an online
+store, plus a blank canvas. **Ctrl K** finds every command.
 
 ## How this differs from a system design simulator
 

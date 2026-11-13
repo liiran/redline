@@ -72,7 +72,7 @@ export function nodeHealth(design: Design, node: DesignNode, sample: Sample | un
       status: "ok",
       load: 0,
       pressure: "none",
-      lines: [`${compact(sample.rate)} req/s sent`, `${compact(sample.ok)} answered · p95 ${ms(sample.latency.p95)}`],
+      lines: [`${compact(sample.rate)} req/s sent`, `${compact(sample.ok)} ok · p95 ${ms(sample.latency.p95)}`],
     }
   }
   const data: NodeSample | undefined = sample?.nodes[node.id]

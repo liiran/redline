@@ -42,11 +42,19 @@ export function Start({ onSketch }: { onSketch: () => void }) {
       }}
     >
       <div className="start-inner">
+        <div className="headline">
+          <div>
+            <h1 className="hero">
+              <span className="hero-1">Find where your</span> <span className="hero-2">system <em>breaks</em>.</span>
+            </h1>
+            <p className="lede">Describe it, sketch it or upload a photo. Every box runs as a real container, so every number is measured.</p>
+          </div>
+          <figure className="sample-window" aria-label="A sample design under load">
+            <SampleCanvas />
+          </figure>
+        </div>
+
         <div className="start-main">
-          <h1 className="hero">
-            Find where your system <em>breaks</em>.
-          </h1>
-          <p className="lede">Describe it, sketch it or upload a photo. Every box runs as a real container, so every number is measured.</p>
 
           {status && !status.docker.ok && (
             <div className="notice bad" style={{ marginBottom: 16 }}>
@@ -54,6 +62,7 @@ export function Start({ onSketch }: { onSketch: () => void }) {
             </div>
           )}
 
+          <div className="start-actions">
           <form
             className="prompt"
             data-disabled={!ai ? "" : undefined}
@@ -111,6 +120,7 @@ export function Start({ onSketch }: { onSketch: () => void }) {
               </span>
             </button>
           </div>
+          </div>
           {status && !ai && <p className="field-hint">Reading drawings and descriptions needs Claude Code signed in, or an ANTHROPIC_API_KEY. The examples work without either.</p>}
           <input
             ref={input}
@@ -125,30 +135,26 @@ export function Start({ onSketch }: { onSketch: () => void }) {
           />
         </div>
 
-        <figure className="sample-window">
-          <figcaption className="sample-status">
-            <span className="dot live" />
-            Sample run · 690 req/s
-          </figcaption>
-          <SampleCanvas />
-        </figure>
-
         <section className="start-examples">
           <h2 className="start-label">Start from an example</h2>
           <div className="examples">
             {TEMPLATES.map((t) => (
-              <button key={t.slug} className="card" onClick={() => openTemplate(t.slug)} title={t.summary}>
+              <button key={t.slug} className="card" onClick={() => openTemplate(t.slug)}>
                 <Preview design={t.design} />
-                <strong>{t.name}</strong>
-                <span>{t.summary}</span>
+                <span className="card-text">
+                  <strong>{t.name}</strong>
+                  <span>{t.summary}</span>
+                </span>
               </button>
             ))}
             <button className="card blank" onClick={newBlank}>
               <span className="blank-icon">
                 <Plus aria-hidden />
               </span>
-              <strong>Blank canvas</strong>
-              <span>Build it yourself.</span>
+              <span className="card-text">
+                <strong>Blank canvas</strong>
+                <span>Build it yourself.</span>
+              </span>
             </button>
           </div>
         </section>
