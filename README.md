@@ -2,7 +2,9 @@
 
 **Describe or sketch a backend. Redline runs it in real containers and pushes traffic until it breaks.**
 
-![Typing a description, Claude drawing it as boxes and arrows, running it in Docker, and finding that the API breaks first](docs/img/demo.gif)
+![Typing a description, Claude drawing it as boxes and arrows, running it in Docker, finding that the API breaks first, then applying the suggested fix and holding more traffic](docs/img/demo.gif)
+
+[Watch it as a video](docs/img/demo.mp4). The waits for Claude, Docker and the test are sped up; everything else is real time.
 
 You describe a system in a sentence, sketch it on a pad, or photograph a whiteboard: boxes for users, an API, a cache, a
 database, with arrows between them. Redline draws it, starts each box as a real container in Docker, sends more and more
@@ -193,7 +195,7 @@ containers share the machine.
 | `npm run e2e` | 22 browser checks in Chrome against a test-mode server: every way in, adding and connecting boxes, a run, the fix, phone width (`npm run build` first) |
 | `npm run typecheck` | TypeScript across the server, the page and the shared code |
 
-`npm run bench` reruns the capacity table. `npm run media` records the demo GIF and the pictures above from a real run.
+`npm run bench` reruns the capacity table. `npm run media` records the demo (MP4 and GIF, through ffmpeg) and the pictures above from a real run, playing the waits fast.
 `npm run dev` starts the server and a hot-reloading page on port 4610.
 
 ## Layout
