@@ -26,10 +26,20 @@ const shortener = template("url-shortener")
 const threeCopies = applyChange(shortener, { kind: "set", nodeId: "api", key: "replicas", value: 3 })
 const withCache = applyChange(threeCopies, { kind: "add-cache", databaseId: "postgres", serviceIds: ["api"] })
 
+const smallDb = applyChange(applyChange(shortener, { kind: "set", nodeId: "api", key: "replicas", value: 6 }), {
+  kind: "set",
+  nodeId: "postgres",
+  key: "cpus",
+  value: 0.2,
+})
+const smallDbCached = applyChange(smallDb, { kind: "add-cache", databaseId: "postgres", serviceIds: ["api"] })
+
 const designs: [string, Design][] = [
   ["URL shortener: 1 API copy, Postgres", shortener],
   ["… with 3 API copies", threeCopies],
   ["… with 3 API copies and a Redis cache", withCache],
+  ["6 API copies, Postgres limited to 0.2 CPU", smallDb],
+  ["… with a Redis cache in front of Postgres", smallDbCached],
   ["Cached feed: load balancer, 2 API copies, Redis, Postgres", template("cached-feed")],
   ["Checkout: payments API, Postgres, queue and worker", template("checkout")],
 ]

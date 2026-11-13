@@ -79,7 +79,7 @@ export function nodeHealth(design: Design, node: DesignNode, sample: Sample | un
 
   const settings = nodeSettings(node)
   const cpu = cpuLoad(usage)
-  const cpuText = usage ? `CPU ${percent(cpu)}` : "CPU –"
+  const cpuText = usage ? `CPU ${percent(Math.min(1, cpu))}` : "CPU –"
   const copies = settings.replicas > 1 ? ` · ${data.up}/${settings.replicas} copies` : ""
   let load = cpu
   let pressure: Pressure = cpu >= BUSY ? "cpu" : "none"

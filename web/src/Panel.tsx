@@ -267,14 +267,14 @@ function stepsOf(session: SessionView) {
 function LiveSections({ session, design }: { session: SessionView; design: Design }) {
   const samples = useApp((s) => s.samples)
   const tests = useApp((s) => s.tests)
-  const [rateIndex, setRateIndex] = useState(() => RATES.findIndex((r) => r >= session.rate))
+  const indexOf = (rate: number) => Math.max(0, RATES.findIndex((r) => r >= rate))
+  const [rateIndex, setRateIndex] = useState(() => indexOf(session.rate))
   const ramp = session.ramp
   const rampRunning = !!ramp?.running
 
   useEffect(() => {
-    if (rampRunning || !ramp?.result) return
-    setRateIndex(0)
-  }, [rampRunning, ramp?.result])
+    if (!rampRunning) setRateIndex(indexOf(session.rate))
+  }, [session.rate, rampRunning])
 
   if (session.phase === "starting" || session.phase === "stopping") {
     return (
@@ -361,7 +361,7 @@ function LiveSections({ session, design }: { session: SessionView; design: Desig
       <section className="section">
         <h2>
           Traffic
-          <span className="hint num">{rampRunning ? `test at ${compact(ramp!.current ?? 0)} req/s` : `${compact(RATES[rateIndex] ?? 0)} req/s`}</span>
+          <span className="hint num">{rampRunning ? `test at ${compact(ramp!.current ?? 0)} req/s` : `${compact(indexOf(session.rate) === rateIndex ? session.rate : (RATES[rateIndex] ?? 0))} req/s`}</span>
         </h2>
         <Range
           label="Requests per second"

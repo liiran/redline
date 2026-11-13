@@ -308,7 +308,13 @@ export class App {
       res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" })
       return res.end("The page isn't built yet. Run `npm run build`, or use `npm start`, which builds it first.")
     }
-    let file = normalize(join(dist, decodeURIComponent(path)))
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(path)
+    } catch {
+      throw new HttpError(400, "That address isn't valid.")
+    }
+    let file = normalize(join(dist, decoded))
     if (!file.startsWith(dist + sep) && file !== dist) file = join(dist, "index.html")
     if (!existsSync(file) || statSync(file).isDirectory()) file = join(dist, "index.html")
     const type = TYPES[extname(file)] ?? "application/octet-stream"
