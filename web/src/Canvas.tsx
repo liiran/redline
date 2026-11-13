@@ -152,7 +152,8 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
   const select = useApp((s) => s.select)
   const flow = useReactFlow()
 
-  const live = session?.phase === "ready"
+  const designId = useApp((s) => s.designId)
+  const live = session?.phase === "ready" && session.designId === designId
   const sample = live ? samples.at(-1) : undefined
   const previous = live ? samples.at(-2) : undefined
   const runningIds = useMemo(() => new Set(session?.design.nodes.map((n) => n.id) ?? []), [session])

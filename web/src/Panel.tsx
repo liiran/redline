@@ -6,7 +6,7 @@ import { CATALOG, SETTING_INFO, edgeRole, settingsFor, type Kind, type SettingKe
 import { nodeSettings, type Design, type DesignNode } from "../../shared/design.ts"
 import { errorRate } from "../../shared/samples.ts"
 import { containerCount, cpuBudget, type Issue } from "../../shared/validate.ts"
-import { addClient, findBreakingPoint, flipEdge, removeSelection, run, setRate, stopRamp, tryChange } from "./actions.ts"
+import { addClient, findBreakingPoint, flipEdge, openSaved, removeSelection, run, setRate, stopRamp, tryChange } from "./actions.ts"
 import type { RampResult, SessionView, TestRow } from "./api.ts"
 import { Chart } from "./Chart.tsx"
 import { Field, KindSelect, NumberField, Range } from "./Controls.tsx"
@@ -28,15 +28,29 @@ const ROLE_TEXT: Record<string, string> = {
 export function Panel({ design, issues }: { design: Design; issues: Issue[] }) {
   const selected = useApp((s) => s.selected)
   const session = useApp((s) => s.session)
+  const designId = useApp((s) => s.designId)
   const node = design.nodes.find((n) => n.id === selected)
   const edge = design.edges.find((e) => e.id === selected)
-  const active = session && session.phase !== "stopped"
+  const mine = session?.designId === designId
+  const active = session && mine && session.phase !== "stopped"
+  const elsewhere = session && !mine && (session.phase === "ready" || session.phase === "starting")
 
   return (
     <aside className="panel" aria-label="Details">
       {node && <BoxSection key={node.id} design={design} node={node} />}
       {edge && <EdgeSection design={design} edgeId={edge.id} />}
-      {active ? <LiveSections session={session} design={design} /> : <DesignSections design={design} issues={issues} stopped={session} />}
+      {elsewhere && (
+        <section className="section">
+          <div className="notice">
+            <AlertTriangle aria-hidden />
+            <span>“{session.design.name}” is running. Running this design stops it.</span>
+            <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => session.designId && openSaved(session.designId)}>
+              Open it
+            </button>
+          </div>
+        </section>
+      )}
+      {active ? <LiveSections session={session} design={design} /> : <DesignSections design={design} issues={issues} stopped={mine ? session : null} />}
     </aside>
   )
 }
@@ -142,7 +156,8 @@ function BoxSection({ design, node }: { design: Design; node: DesignNode }) {
   const setSetting = (key: SettingKey, value: number) => update({ settings: { ...node.settings, [key]: value } }, key)
   const setKind = (kind: Kind) => update({ kind, settings: {} }, "kind")
 
-  const live = session?.phase === "ready" && session.design.nodes.some((n) => n.id === node.id)
+  const designId = useApp((s) => s.designId)
+  const live = session?.phase === "ready" && session.designId === designId && session.design.nodes.some((n) => n.id === node.id)
   const health = live ? nodeHealth(design, node, samples.at(-1), samples.at(-2)) : null
   const deps = live ? samples.at(-1)?.nodes[node.id]?.deps : undefined
   const changed = live && JSON.stringify(session!.design.nodes.find((n) => n.id === node.id)?.settings ?? {}) !== JSON.stringify(node.settings)

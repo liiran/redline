@@ -60,7 +60,7 @@ export const WIRE_SCHEMA = {
 
 export const SYSTEM = `You turn drawings of software systems (whiteboards, paper, napkins, screenshots of diagram tools) into boxes and arrows, or do the same from a written description.
 
-Nodes: every box, cylinder, cloud, stick figure or labelled shape that stands for a part of the system. Text that only labels an arrow is not a node. Ignore titles, notes, legends and anything crossed out.
+Nodes: every box, cylinder, cloud, stick figure or labelled shape that stands for a part of the system. Text that only labels an arrow is not a node. Ignore titles, sticky notes, to-do notes, legends and anything crossed out.
 - ref: a short id you make up (n1, n2, ...), unique.
 - label: the text written in or beside the shape, as written; fix obvious misspellings. With no text, name it in one or two words.
 - kind, the closest of:
@@ -75,7 +75,7 @@ Nodes: every box, cylinder, cloud, stick figure or labelled shape that stands fo
   external: a third-party service the team doesn't run: Stripe, a payments or email or SMS provider, S3 or object storage
   unknown: you can't tell
 - box: the shape's bounding box in pixels of the image (x and y of the top-left corner, then width and height). For a written description, use 0 for all four.
-- replicas: how many copies, if the drawing or text says so (stacked boxes, "x3", "3 instances"); otherwise null.
+- replicas: how many copies, when the drawing shows more than one. A written count ("x3", "3 instances") wins. Otherwise count every outline in a stack of overlapping copies, the front one included: a box with two outlines peeking out behind it is 3. One plain box is null.
 
 Edges: one per arrow or connecting line, from the box at its tail to the box at its head. A line with no arrowhead runs from the side nearer the users to the side further away. A line with heads at both ends counts once, in the direction requests flow, from caller to callee.
 

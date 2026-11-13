@@ -149,6 +149,16 @@ await check("applying a suggestion and running the new design compares the two t
   expect(second > first, `the fix should raise capacity (${first} → ${second})`)
 })
 
+await check("opening another design while one runs says which one is running", async () => {
+  await page.keyboard.press("Control+k")
+  await page.getByRole("combobox", { name: "Search commands" }).fill("URL shortener")
+  await page.keyboard.press("Enter")
+  await page.getByText("“Cached feed” is running").waitFor()
+  expect((await page.locator(".box[data-status='hot'], .box[data-status='busy']").count()) === 0, "another design's numbers leaked onto this one")
+  await page.getByRole("button", { name: "Open it" }).click()
+  await page.getByRole("button", { name: "Find the breaking point" }).waitFor()
+})
+
 await check("stopping returns to the design view", async () => {
   await page.getByRole("button", { name: "Stop", exact: true }).click()
   await page.getByRole("button", { name: "Run in Docker" }).waitFor({ timeout: 20_000 })
