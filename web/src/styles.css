@@ -799,7 +799,7 @@ kbd,
   justify-items: center;
   height: 100%;
   overflow-y: auto;
-  padding: clamp(96px, 14vh, 150px) 48px 80px;
+  padding: clamp(64px, 9vh, 104px) 48px 40px;
 }
 
 .start-inner {
@@ -822,7 +822,7 @@ kbd,
   position: relative;
   margin: 0;
   min-width: 0;
-  height: 380px;
+  height: 340px;
   border-radius: 22px;
   background: var(--paper);
   box-shadow: var(--shadow-card), 0 30px 60px -36px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.8));
@@ -844,7 +844,7 @@ kbd,
 /* Examples sit under both columns, spread across the page. */
 .start-examples {
   grid-column: 1 / -1;
-  margin-top: 40px;
+  margin-top: 12px;
 
   & .start-label {
     margin: 0 0 14px;
@@ -1085,10 +1085,16 @@ kbd,
   gap: 8px;
 }
 
+/* One row of eight on a wide screen, so the whole page fits without scrolling. */
 .examples {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 12px;
+
+  /* Too narrow for a summary here; it shows on hover instead. */
+  & .card > span:not(.blank-icon) {
+    display: none;
+  }
 }
 
 .card {
@@ -1127,13 +1133,13 @@ kbd,
     font-size: 11.5px;
     line-height: 1.4;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
   }
 }
 
 .preview {
   width: 100%;
-  height: 92px;
+  height: 52px;
   margin-bottom: 8px;
   border-radius: 8px;
   background: var(--paper);
@@ -1168,7 +1174,7 @@ kbd,
   & .blank-icon {
     display: grid;
     place-items: center;
-    height: 92px;
+    height: 52px;
     margin-bottom: 8px;
     border: 1.5px dashed var(--line);
     border-radius: 8px;
@@ -1178,6 +1184,28 @@ kbd,
       width: 18px;
       height: 18px;
     }
+  }
+}
+
+/* Short screens: a little less air, so the page still fits without scrolling. */
+@media (max-height: 760px) and (min-width: 961px) {
+  .start {
+    padding-top: 52px;
+    padding-bottom: 24px;
+  }
+
+  .sample-window {
+    height: 300px;
+  }
+
+  .lede {
+    margin-bottom: 22px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .examples {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
