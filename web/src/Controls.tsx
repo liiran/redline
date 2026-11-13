@@ -66,6 +66,7 @@ export function Range({
   step,
   onChange,
   onCommit,
+  disabled,
 }: {
   label: string
   value: number
@@ -74,6 +75,7 @@ export function Range({
   step: number
   onChange: (value: number) => void
   onCommit?: (value: number) => void
+  disabled?: boolean
 }) {
   return (
     <Slider
@@ -81,6 +83,7 @@ export function Range({
       min={min}
       max={max}
       step={step}
+      disabled={disabled}
       onValueChange={(next) => onChange(next as number)}
       onValueCommit={(next) => onCommit?.(next as number)}
     >

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { KINDS } from "../shared/catalog.ts"
 import type { Design } from "../shared/design.ts"
-import { connectAll, fromSketch, layout, sketchSchema, type Sketch } from "../shared/normalize.ts"
+import { connectAll, fromSketch, layout, separate, sketchSchema, type Sketch } from "../shared/normalize.ts"
 
 export const DEFAULT_MODEL = "claude-opus-5-5"
 
@@ -155,7 +155,7 @@ export function toDesign(sketch: Sketch, input: { image?: Image; text?: string }
     ? fromSketch(sketch, { id: photoId, width: input.image!.width, height: input.image!.height }, "Whiteboard sketch")
     : fromSketch(sketch, undefined, "New system")
   const { design, added } = connectAll(raw)
-  return { design: drawn ? design : layout(design), added: added.length }
+  return { design: drawn ? separate(design) : layout(design), added: added.length }
 }
 
 /** On Windows, npm installs claude behind a .cmd wrapper that Node can't start without a shell. */

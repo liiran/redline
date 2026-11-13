@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { edgeRole, settingsFor, type Kind } from "./catalog.ts"
 import { designSchema, slug, uniqueId, type Design } from "./design.ts"
-import { NODE_HEIGHT, NODE_WIDTH, cleanName, connectAll, fromSketch, guessKind, layout, orientEdges } from "./normalize.ts"
+import { NODE_HEIGHT, NODE_WIDTH, cleanName, connectAll, fromSketch, guessKind, layout, orientEdges, separate } from "./normalize.ts"
 import { TEMPLATES, template } from "./templates.ts"
 import { canRun, containerCount, cpuBudget, validate } from "./validate.ts"
 
@@ -180,6 +180,20 @@ describe("reading a sketch", () => {
         }
       }
     }
+  })
+})
+
+describe("boxes read from a photo", () => {
+  it("are nudged apart when drawn too close, and stay put when they aren't", () => {
+    const d = design([["users", "client"], ["api", "service"], ["db", "database"]], [])
+    d.nodes[0]!.x = 0
+    d.nodes[1]!.x = 120
+    d.nodes[2]!.x = 600
+    const apart = separate(d)
+    const [a, b, c] = apart.nodes
+    expect(Math.abs(a!.x - b!.x) >= NODE_WIDTH || Math.abs(a!.y - b!.y) >= NODE_HEIGHT).toBe(true)
+    expect(c!.x).toBe(600)
+    expect(Math.abs(a!.x + b!.x - 120)).toBeLessThanOrEqual(2)
   })
 })
 

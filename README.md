@@ -1,22 +1,21 @@
 # Redline
 
-**Draw a system on a whiteboard. Redline runs it in real containers and pushes traffic until it breaks.**
+**Describe or sketch a backend. Redline runs it in real containers and pushes traffic until it breaks.**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/live-dark.png">
-  <img alt="A URL shortener under load: the API box is red because it ran out of CPU, and the side panel shows where it broke and what to try next" src="docs/img/live-light.png">
-</picture>
+![Typing a description, Claude drawing it as boxes and arrows, running it in Docker, and finding that the API breaks first](docs/img/demo.gif)
 
-You photograph a system-design sketch: boxes for users, an API, a cache, a database, with arrows between them. Redline reads it,
-starts each box as a real container in Docker, sends more and more traffic, and tells you which box gave out first and why.
-Then it suggests a fix, you apply it, run again, and compare.
+You describe a system in a sentence, sketch it on a pad, or photograph a whiteboard: boxes for users, an API, a cache, a
+database, with arrows between them. Redline draws it, starts each box as a real container in Docker, sends more and more
+traffic, and tells you which box gave out first and why. Then it suggests a fix, you apply it, run again, and compare.
 
 ## What happens, step by step
 
-Take a sketch of **Users → API → Postgres**.
+Take **Users → API → Postgres**.
 
-1. **Read.** Claude turns the photo into boxes and arrows in about 4 seconds. The boxes sit on top of your drawing, so you can
-   check them. Fix anything by hand: rename a box, change its kind, drag a new arrow.
+1. **Draw.** Type it (“users hit an API backed by Postgres”), sketch it, or drop a photo. Claude turns it into boxes and
+   arrows in about 4 seconds. From a sentence you get a full design with a short title, laid out left to right in the
+   order requests flow. From a photo the boxes sit on top of your drawing, so you can check them. Every box ends up
+   connected: one that nothing reaches gets an arrow from its likeliest caller, and Redline says so.
 2. **Run.** Each box becomes a container. Postgres is real PostgreSQL 17 and a cache is real Redis. Your API, load balancers and
    workers are a small Go program that does what those boxes do. The API, for example, checks the cache, falls back to the
    database, and fills the cache after a miss. Every container gets a CPU limit (0.5 cores for a service by default).
@@ -29,6 +28,30 @@ Take a sketch of **Users → API → Postgres**.
    compare. With 3 copies the same test holds **1,200 req/s**, three times as much. A cache wouldn't have helped here, because the database was never the problem. Shrink Postgres to a
    fifth of a core and run 6 API copies, and Redline blames Postgres instead; then its suggested cache takes the system
    from 1,000 to 2,000 req/s.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/live-dark.png">
+  <img alt="A cached API under load in Docker: the API box is red because it ran out of CPU, and the side panel shows where it broke and what to try next" src="docs/img/live-light.png">
+</picture>
+
+## Editing
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/editor-dark.png">
+  <img alt="The battle royale example with the Shop box selected: its connections are highlighted and the side panel lists what it gets requests from and calls" src="docs/img/editor-light.png">
+</picture>
+
+Click a box to see what it's connected to, rename it, or change what it is. Its main settings (copies and CPU for a
+service) are up front, the rest under “More settings”. To grow a design:
+
+- **New box** in the box's panel adds one already connected to it, beside it.
+- **Drag from the dot on a box's side** to another box to draw an arrow, or let go on empty canvas to pick a new box
+  that appears right there, connected.
+- **Connect to…** joins two boxes that are already there, in whichever direction requests can flow.
+- **Tidy up** lines everything up again. Arrows always find their way between boxes, never through them.
+
+There are seven examples to start from: a URL shortener, a cached feed, checkout, a chat app, a video platform, an online
+store and a battle royale game backend, plus a blank canvas. **Ctrl K** finds every command.
 
 ## How this differs from a system design simulator
 
@@ -79,10 +102,17 @@ Settings, all optional, in the environment or `.env.local`:
 ```
 
 - **Reading** (`server/recognize.ts`). The photo is shrunk to the size Claude reads without rescaling, so the positions it
-  returns line up with the picture. Claude answers in a fixed JSON shape (structured output): each box's label, kind,
-  position and copy count, and each arrow. `shared/normalize.ts` then cleans it up: arrows drawn backwards are flipped
-  (a database never calls an API), a worker's line to its queue becomes "takes jobs from", extra "Users" boxes merge,
-  and a Users box is added if the drawing has none.
+  returns line up with the picture. Claude answers in a fixed JSON shape (structured output): a short title, each box's
+  label, kind, position and copy count, and each arrow. A description goes to a second prompt that designs a realistic
+  system Redline can run: 6 to 13 boxes, only arrows that work, and nothing left floating. `shared/normalize.ts` then
+  cleans it up: arrows drawn backwards are flipped (a database never calls an API), a worker's line to its queue becomes
+  "takes jobs from", extra "Users" boxes merge, a Users box is added if there is none, and a box nothing reaches gets an
+  arrow from the box whose name it shares (a "Skins CDN" finds the "Skins service").
+- **Layout** (`shared/normalize.ts`, `shared/route.ts`). Each box goes in the column of its step along the longest request
+  path, so every design reads users, then CDN and gateway, then services, then what they call. [dagre](https://github.com/dagrejs/dagre)
+  orders each column to keep crossings down. Arrows cross a column of boxes level, through the gap nearest a straight
+  line, and bend only in the open space between columns. Boxes read from a photo stay where they were drawn, nudged
+  apart if they overlap.
 - **Compiling** (`shared/compile.ts`). A design becomes a Docker Compose file: one service per box, `deploy.replicas` for
   copies, CPU and memory limits, health checks, and start order from the arrows. Nothing is published to your network
   except the probe, on 127.0.0.1.
@@ -155,18 +185,19 @@ containers share the machine.
 
 | Command | What it checks |
 | --- | --- |
-| `npm test` | 65 unit and server tests: the model, compiler, analysis, suggestions, the step-up search, reading, and the HTTP server (with a stand-in runtime) |
+| `npm test` | 85 unit and server tests: the model, compiler, layout, arrow routing (no arrow in any example touches a box), joining up stray boxes, analysis, suggestions, the step-up search, reading, and the HTTP server (with a stand-in runtime) |
 | `npm run test:go` | The Go runtime: caching, writes, load balancing, the CDN, error reporting, and that the probe holds its rate |
 | `npm run test:docker` | Real containers: writes reach Postgres, jobs reach the worker, the cache answers, and a suggested fix raises capacity |
-| `npm run e2e` | 16 browser checks in Chrome against a test-mode server, phone width included (`npm run build` first) |
+| `npm run e2e` | 22 browser checks in Chrome against a test-mode server: every way in, adding and connecting boxes, a run, the fix, phone width (`npm run build` first) |
 | `npm run typecheck` | TypeScript across the server, the page and the shared code |
 
-`npm run bench` reruns the capacity table. `npm run dev` starts the server and a hot-reloading page on port 4610.
+`npm run bench` reruns the capacity table. `npm run media` records the demo GIF and the pictures above from a real run.
+`npm run dev` starts the server and a hot-reloading page on port 4610.
 
 ## Layout
 
 ```
-shared/    the design model, validation, the compiler, analysis and suggestions (used by both sides)
+shared/    the design model, validation, layout and arrow routing, the compiler, analysis and suggestions (used by both sides)
 server/    HTTP API, Docker, sessions, the step-up search, reading drawings, SQLite
 runtime/   the Go program that plays services, load balancers, CDNs, workers, stand-ins and the probe
 web/       the page: React, React Flow for the canvas, Vercel's UI SDK for menus, dialogs, sliders and toasts

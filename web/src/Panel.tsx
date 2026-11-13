@@ -561,10 +561,11 @@ function LiveSections({ session, design }: { session: SessionView; design: Desig
         </h2>
         <Range
           label="Requests per second"
-          value={Math.max(0, rateIndex)}
+          value={rampRunning ? indexOf(ramp!.current ?? 0) : Math.max(0, rateIndex)}
           min={0}
           max={RATES.length - 1}
           step={1}
+          disabled={rampRunning}
           onChange={(i) => setRateIndex(i)}
           onCommit={(i) => !rampRunning && setRate(RATES[i] ?? 0)}
         />

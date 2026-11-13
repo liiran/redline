@@ -266,6 +266,38 @@ export function connectAll(design: Design): { design: Design; added: DesignEdge[
   return { design: added.length ? { ...design, edges } : design, added }
 }
 
+/**
+ * Pushes overlapping boxes apart, each pair along whichever way they overlap least, until none overlap.
+ * Boxes read from a photo sit where they were drawn; this keeps them there, only not on top of each other.
+ */
+export function separate(design: Design, gap = 16): Design {
+  const nodes = design.nodes.map((node) => ({ ...node }))
+  for (let pass = 0; pass < 60; pass++) {
+    let moved = false
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i]!
+        const b = nodes[j]!
+        const dx = NODE_WIDTH + gap - Math.abs(a.x - b.x)
+        const dy = NODE_HEIGHT + gap - Math.abs(a.y - b.y)
+        if (dx <= 0 || dy <= 0) continue
+        moved = true
+        if (dx * NODE_HEIGHT < dy * NODE_WIDTH) {
+          const push = Math.ceil(dx / 2) * (a.x <= b.x ? 1 : -1)
+          a.x -= push
+          b.x += push
+        } else {
+          const push = Math.ceil(dy / 2) * (a.y <= b.y ? 1 : -1)
+          a.y -= push
+          b.y += push
+        }
+      }
+    }
+    if (!moved) break
+  }
+  return { ...design, nodes }
+}
+
 export const COLUMN_GAP = 112
 export const ROW_GAP = 36
 
