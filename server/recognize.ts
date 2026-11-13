@@ -113,7 +113,7 @@ Rules:
 - No loops of service calls.
 - label: 1 to 3 words, at most 20 characters, without the kind repeated or technology in brackets: "Matchmaking", "Shop", "Player DB", "Leaderboard cache".
 - name: what the system is, 2 to 5 words, like "Battle royale backend". Never a sentence or the description itself.
-- replicas: 2 or 3 for stateless services that obviously take heavy traffic, otherwise null.
+- replicas: 2 for at most two of the busiest stateless services, otherwise null. Everything runs on one laptop.
 - box: 0 for all four.
 - ref: n1, n2, ...
 

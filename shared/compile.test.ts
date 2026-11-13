@@ -22,7 +22,7 @@ describe("compile", () => {
   })
 
   it("publishes only the probe, and only on loopback", () => {
-    const { compose } = services("microservices")
+    const { compose } = services("online-store")
     for (const [name, service] of Object.entries(compose.services as Record<string, Record<string, unknown>>)) {
       if (name === "probe") expect(service.ports).toEqual(["127.0.0.1::7000"])
       else expect(service.ports).toBeUndefined()
@@ -33,11 +33,11 @@ describe("compile", () => {
   })
 
   it("starts each box after what it depends on", () => {
-    const { compose } = services("microservices")
+    const { compose } = services("online-store")
     const s = compose.services as Record<string, { depends_on?: Record<string, unknown> }>
-    expect(Object.keys(s.catalog!.depends_on!).sort()).toEqual(["postgres", "pricing", "redis"])
-    expect(Object.keys(s.gateway!.depends_on!)).toEqual(["catalog"])
-    expect(Object.keys(s.probe!.depends_on!).sort()).toEqual(["catalog", "cdn", "gateway", "postgres", "pricing", "redis"])
+    expect(Object.keys(s.orders!.depends_on!).sort()).toEqual(["catalog", "orders-db", "payments"])
+    expect(Object.keys(s.gateway!.depends_on!).sort()).toEqual(["cart", "catalog", "orders"])
+    expect(Object.keys(s.probe!.depends_on!).sort()).toEqual(["cart", "carts", "catalog", "catalog-cache", "catalog-db", "cdn", "gateway", "orders", "orders-db", "payments"])
   })
 
   it("wires workers to their queue with a group of their own", () => {
@@ -54,10 +54,10 @@ describe("compile", () => {
   })
 
   it("gives the load balancer and CDN their upstreams", () => {
-    const { agents } = services("microservices")
+    const { agents } = services("online-store")
     expect(agents.find((a) => a.id === "cdn")).toMatchObject({ mode: "cdn", upstreams: ["gateway"], ttlSec: 30 })
-    expect(agents.find((a) => a.id === "gateway")).toMatchObject({ mode: "lb", upstreams: ["catalog"] })
-    expect(agents.find((a) => a.id === "catalog")!.caches).toEqual([{ id: "redis", addr: "redis:6379", ttlSec: 60 }])
+    expect(agents.find((a) => a.id === "gateway")).toMatchObject({ mode: "lb", upstreams: ["catalog", "cart", "orders"] })
+    expect(agents.find((a) => a.id === "catalog")!.caches).toEqual([{ id: "catalog-cache", addr: "catalog-cache:6379", ttlSec: 60 }])
   })
 
   it("puts the config in the environment as JSON the runtime can read", () => {

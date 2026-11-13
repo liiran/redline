@@ -1,6 +1,6 @@
 import { Button } from "@ui-sdk/react/button"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/react/menu"
-import { AlertTriangle, ArrowLeftRight, Check, CircleAlert, Gauge, Loader2, MousePointerClick, Play, Plus, Spline, Square, Trash2, X } from "lucide-react"
+import { AlertTriangle, ArrowLeftRight, Check, CircleAlert, Gauge, Loader2, MousePointerClick, Plus, Spline, Square, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { compact, findBottleneck, ms, nodeHealth, percent } from "../../shared/analyze.ts"
 import { CATALOG, KINDS, SETTING_INFO, edgeRole, settingsFor, type Kind, type SettingKey } from "../../shared/catalog.ts"
@@ -16,14 +16,15 @@ import { useApp } from "./store.ts"
 
 const RATES = [0, 10, 25, 50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000, 7500, 10_000, 15_000, 20_000]
 
+// Finishes a sentence that starts with the name of the box the arrow leaves.
 const ROLE_TEXT: Record<string, string> = {
-  traffic: "Users send their requests here.",
-  upstream: "Passes requests on to it.",
-  database: "Reads and writes rows in it.",
-  cache: "Checks it before the database, and fills it after a miss.",
-  produce: "Puts a job on it after each write.",
-  consume: "The worker takes jobs from it.",
-  call: "Calls it on every request and waits for the answer.",
+  traffic: "send their requests here.",
+  upstream: "passes requests on to it.",
+  database: "reads and writes rows in it.",
+  cache: "checks it before the database, and fills it after a miss.",
+  produce: "puts a job on it after each write.",
+  consume: "hands its jobs to this worker.",
+  call: "calls it on every request and waits for the answer.",
 }
 
 export function Panel({ design, issues }: { design: Design; issues: Issue[] }) {
@@ -115,16 +116,13 @@ function DesignSections({ design, issues, stopped }: { design: Design; issues: I
             <span>Last run failed: {stopped.error}</span>
           </div>
         )}
-        <div className="row" style={{ marginTop: 14 }}>
-          <Button className="btn primary" style={{ flex: 1 }} disabled={errors.length > 0 || !dockerOk} onClick={run}>
-            <Play aria-hidden /> Run in Docker
-          </Button>
-        </div>
-        {!dockerOk && status && (
-          <p className="field-hint" style={{ marginTop: 8 }}>
-            {status.docker.ok ? "" : status.docker.error}
-          </p>
-        )}
+        <p className="field-hint" style={{ marginTop: 12 }}>
+          {status && !dockerOk
+            ? status.docker.error
+            : errors.length > 0
+              ? "Fix the problems above, then press Run."
+              : "Press Run to start these containers in Docker and send them traffic."}
+        </p>
       </section>
 
       <section className="section">
@@ -132,15 +130,15 @@ function DesignSections({ design, issues, stopped }: { design: Design; issues: I
         <ul className="howto">
           <li>
             <MousePointerClick aria-hidden />
-            <span>Click a box to rename it, change what it is, or connect it.</span>
+            <span>Click a box to rename, change or connect it.</span>
           </li>
           <li>
             <Spline aria-hidden />
-            <span>Drag from the dot on a box's side to another box to draw an arrow.</span>
+            <span>Drag from a box's side dot to another box to draw an arrow.</span>
           </li>
           <li>
             <Plus aria-hidden />
-            <span>Let go on empty canvas to add a new box right there, already connected.</span>
+            <span>Let go on empty canvas to add a connected box there.</span>
           </li>
         </ul>
       </section>
@@ -294,7 +292,7 @@ function BoxSection({ design, node, issues }: { design: Design; node: DesignNode
     const meta = SETTING_INFO[key]
     const value = settings[key]
     return (
-      <Field key={key} label={meta.label} value={`${compact(value)}${meta.unit ? ` ${meta.unit}` : ""}`} hint={meta.hint}>
+      <Field key={key} label={meta.label} value={key === "cpus" || key === "workMs" ? `${compact(value)}${meta.unit ? ` ${meta.unit}` : ""}` : undefined} hint={meta.hint}>
         {key === "cpus" || key === "workMs" ? (
           <Range label={meta.label} value={value} min={meta.min} max={meta.max} step={meta.step} onChange={(v) => setSetting(key, v)} />
         ) : (
@@ -401,27 +399,49 @@ function EdgeSection({ design, edgeId }: { design: Design; edgeId: string }) {
   const to = design.nodes.find((n) => n.id === edge.to)
   if (!from || !to) return null
   const role = edgeRole(from.kind, to.kind)
+  const go = (id: string) => useApp.getState().select(id)
   return (
-    <section className="section">
-      <h2>
-        Arrow
-        <button className="btn ghost sm icon" style={{ marginLeft: "auto" }} aria-label="Delete arrow" onClick={() => removeSelection([], [edge.id])}>
-          <Trash2 aria-hidden />
-        </button>
-        <button className="btn ghost sm icon" aria-label="Close" onClick={() => useApp.getState().select(null)}>
-          <X aria-hidden />
-        </button>
-      </h2>
-      <p>
-        <strong>{from.label}</strong> → <strong>{to.label}</strong>
-      </p>
-      <p className="muted" style={{ marginTop: 4 }}>
-        {role ? ROLE_TEXT[role] : "This arrow can't work as drawn."}
-      </p>
-      <div className="row" style={{ marginTop: 12 }}>
-        <button className="btn sm" onClick={() => flipEdge(edge.id)} disabled={edgeRole(to.kind, from.kind) === null}>
-          <ArrowLeftRight aria-hidden /> Flip direction
-        </button>
+    <section className="section box-section">
+      <div className="box-head">
+        <span className="box-icon">
+          <Spline aria-hidden />
+        </span>
+        <span className="title-text">Arrow</span>
+        <Tip text="Delete arrow">
+          <button className="btn ghost sm icon" aria-label="Delete arrow" onClick={() => removeSelection([], [edge.id])}>
+            <Trash2 aria-hidden />
+          </button>
+        </Tip>
+        <Tip text="Close (Esc)">
+          <button className="btn ghost sm icon" aria-label="Close" onClick={() => useApp.getState().select(null)}>
+            <X aria-hidden />
+          </button>
+        </Tip>
+      </div>
+      <div className="connections">
+        <ul className="chips arrow-ends">
+          <li className="chip">
+            <button className="chip-name" onClick={() => go(from.id)}>
+              <KindIcon kind={from.kind} />
+              <span>{from.label}</span>
+            </button>
+          </li>
+          <li aria-hidden className="arrow-sign">→</li>
+          <li className="chip">
+            <button className="chip-name" onClick={() => go(to.id)}>
+              <KindIcon kind={to.kind} />
+              <span>{to.label}</span>
+            </button>
+          </li>
+        </ul>
+        <p className="muted small">{role ? `${from.label} ${ROLE_TEXT[role]}` : "This arrow can't work as drawn."}</p>
+        {edgeRole(to.kind, from.kind) !== null && (
+          <div className="row">
+            <button className="btn sm" onClick={() => flipEdge(edge.id)}>
+              <ArrowLeftRight aria-hidden /> Flip direction
+            </button>
+          </div>
+        )}
       </div>
     </section>
   )

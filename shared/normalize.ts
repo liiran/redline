@@ -266,20 +266,70 @@ export function connectAll(design: Design): { design: Design; added: DesignEdge[
   return { design: added.length ? { ...design, edges } : design, added }
 }
 
+export const COLUMN_GAP = 112
+export const ROW_GAP = 36
+
+/**
+ * The column each box goes in: its step along the longest request path from the users, so the users
+ * come first, then CDNs and gateways, then services, then what they call. Arrows that would loop
+ * back are left out, and the arrows kept always run from one column to a later one.
+ */
+export function columns(design: Design) {
+  const ids = new Set(design.nodes.map((node) => node.id))
+  const out = new Map<string, string[]>()
+  for (const edge of design.edges) {
+    if (!ids.has(edge.from) || !ids.has(edge.to) || edge.from === edge.to) continue
+    out.set(edge.from, [...(out.get(edge.from) ?? []), edge.to])
+  }
+  const incoming = new Set(design.edges.map((edge) => edge.to))
+  const roots = [
+    ...design.nodes.filter((node) => node.kind === "client"),
+    ...design.nodes.filter((node) => node.kind !== "client" && !incoming.has(node.id)),
+    ...design.nodes,
+  ]
+  const state = new Map<string, 1 | 2>()
+  const forward: [string, string][] = []
+  const visit = (id: string) => {
+    state.set(id, 1)
+    for (const to of out.get(id) ?? []) {
+      if (state.get(to) === 1) continue
+      forward.push([id, to])
+      if (!state.has(to)) visit(to)
+    }
+    state.set(id, 2)
+  }
+  for (const root of roots) if (!state.has(root.id)) visit(root.id)
+
+  const rank = new Map(design.nodes.map((node) => [node.id, 0]))
+  const pending = new Map(design.nodes.map((node) => [node.id, 0]))
+  for (const [, to] of forward) pending.set(to, pending.get(to)! + 1)
+  const ready = design.nodes.filter((node) => pending.get(node.id) === 0).map((node) => node.id)
+  while (ready.length) {
+    const id = ready.shift()!
+    for (const [from, to] of forward) {
+      if (from !== id) continue
+      rank.set(to, Math.max(rank.get(to)!, rank.get(id)! + 1))
+      pending.set(to, pending.get(to)! - 1)
+      if (pending.get(to) === 0) ready.push(to)
+    }
+  }
+  return { rank, forward }
+}
+
 /** Lays boxes out left to right in the order requests flow, keeping crossings down. */
 export function layout(design: Design): Design {
   if (design.nodes.length === 0) return design
+  const { rank, forward } = columns(design)
   const g = new Graph()
-  g.setGraph({ rankdir: "LR", nodesep: 26, ranksep: 96, edgesep: 12, marginx: 0, marginy: 0 })
+  g.setGraph({ rankdir: "LR", nodesep: ROW_GAP, ranksep: COLUMN_GAP, edgesep: 18, marginx: 0, marginy: 0 })
   g.setDefaultEdgeLabel(() => ({}))
   for (const node of design.nodes) {
     const copies = Math.min(2, nodeSettings(node).replicas - 1)
     g.setNode(node.id, { width: NODE_WIDTH + copies * 4, height: NODE_HEIGHT + copies * 4 })
   }
-  const ids = new Set(design.nodes.map((node) => node.id))
-  for (const edge of design.edges) {
-    if (ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to) g.setEdge(edge.from, edge.to, { weight: 1, minlen: 1 })
-  }
+  // Each arrow must span at least its column difference. Every arrow then sits exactly at its minimum,
+  // which is the cheapest ranking there is, so dagre's own ranker lands on these columns.
+  for (const [from, to] of forward) g.setEdge(from, to, { weight: 1, minlen: rank.get(to)! - rank.get(from)! })
   dagreLayout(g)
   const placed = new Map<string, { x: number; y: number }>()
   for (const node of design.nodes) {

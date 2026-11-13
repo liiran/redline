@@ -83,10 +83,12 @@ const rate = (text) => {
 
 let page = await newPage()
 
-await check("start page shows the pitch, three ways in and four examples", async () => {
+await check("start page shows the pitch, three ways in, seven examples and a blank canvas", async () => {
   await page.getByRole("heading", { name: /Draw a system/ }).waitFor()
-  for (const name of ["Choose a photo", "Sketch it here", "Describe it"]) await page.getByRole("button", { name }).waitFor()
-  expect((await page.locator(".examples .card").count()) === 4, "expected 4 examples")
+  await page.getByRole("textbox", { name: "Describe your system" }).waitFor()
+  for (const name of [/Sketch it/, /Upload a photo/]) await page.getByRole("button", { name }).waitFor()
+  expect((await page.locator(".examples .card").count()) === 8, "expected 7 examples and a blank canvas")
+  expect((await page.locator(".examples .card svg.preview").count()) === 7, "each example should show a preview")
 })
 
 await check("an example opens on the canvas with its boxes and arrows", async () => {
@@ -213,7 +215,7 @@ await check("opening another design while one runs says which one is running", a
 
 await check("stopping returns to the design view", async () => {
   await page.getByRole("button", { name: "Stop", exact: true }).click()
-  await page.getByRole("button", { name: "Run in Docker" }).waitFor({ timeout: 20_000 })
+  await page.getByText("Press Run to start these containers").waitFor({ timeout: 20_000 })
 })
 
 await check("a photo is read into boxes laid over the picture", async () => {
@@ -240,6 +242,23 @@ await check("describing a system in words draws it with a short title, every box
   expect((await arrows(page).count()) === 5, "the stray CDN should be joined up")
   await page.getByText(/Added 2 arrows/).first().waitFor()
   expect((await page.locator(".react-flow__node-photo").count()) === 0, "a described system has no photo")
+})
+
+await check("typing on the start page draws the system", async () => {
+  await page.goto(base)
+  await page.getByRole("textbox", { name: "Describe your system" }).fill("users call an api backed by redis and postgres")
+  await page.keyboard.press("Enter")
+  await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-box").length === 5)
+})
+
+await check("a blank canvas starts with just the users", async () => {
+  await page.goto(base)
+  await page.locator(".card", { hasText: "Blank canvas" }).click()
+  await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-box").length === 1)
+  await page.locator(".react-flow__node-box").first().click()
+  await page.getByRole("button", { name: "New box" }).click()
+  await page.getByRole("menuitem", { name: /Load balancer/ }).click()
+  await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-box").length === 2 && document.querySelectorAll(".react-flow__edge").length === 1)
 })
 
 await check("the sketch pad turns strokes into a design", async () => {
@@ -279,8 +298,9 @@ await check("saved designs come back on the start page", async () => {
   await page.goto(base)
   await page.locator(".recent-row").first().waitFor()
   expect((await page.locator(".recent-row").count()) >= 3, "expected the designs made above")
-  await page.locator(".recent-row", { hasText: "Cached feed" }).click()
-  await boxes(page).filter({ hasText: "Orders DB" }).waitFor()
+  // The blank canvas from above, with the load balancer added to it.
+  await page.locator(".recent-row", { hasText: "Untitled system" }).first().click()
+  await boxes(page).filter({ hasText: "Load balancer" }).waitFor()
 })
 
 await check("fits a phone screen without sideways scrolling", async () => {

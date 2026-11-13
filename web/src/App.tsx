@@ -8,7 +8,7 @@ import { CATALOG, KINDS, type Kind } from "../../shared/catalog.ts"
 import { validate } from "../../shared/validate.ts"
 import { addBox, openSaved, readPhoto, run, stop, tidy } from "./actions.ts"
 import { api, listen } from "./api.ts"
-import { Canvas } from "./Canvas.tsx"
+import { Canvas, FIT } from "./Canvas.tsx"
 import { Tip } from "./Controls.tsx"
 import { DescribeDialog, SketchDialog } from "./Dialogs.tsx"
 import { imageFrom } from "./image.ts"
@@ -99,13 +99,13 @@ function CanvasTools() {
       <Tip text="Tidy up: line boxes up in the order requests flow">
         <button className="btn sm icon ghost" aria-label="Tidy up" onClick={() => {
           tidy()
-          setTimeout(() => flow.fitView({ padding: 0.25, duration: 250, maxZoom: 1.2 }), 30)
+          setTimeout(() => flow.fitView({ ...FIT, duration: 250 }), 30)
         }}>
           <LayoutGrid aria-hidden />
         </button>
       </Tip>
       <Tip text="Fit to screen">
-        <button className="btn sm icon ghost" aria-label="Fit to screen" onClick={() => flow.fitView({ padding: 0.25, duration: 250, maxZoom: 1.2 })}>
+        <button className="btn sm icon ghost" aria-label="Fit to screen" onClick={() => flow.fitView({ ...FIT, duration: 250 })}>
           <Maximize aria-hidden />
         </button>
       </Tip>
@@ -286,7 +286,7 @@ export function App() {
         <Workspace />
       ) : (
         <div style={{ position: "relative", minHeight: 0 }}>
-          <Start onSketch={() => setSketch(true)} onDescribe={() => setDescribe(true)} />
+          <Start onSketch={() => setSketch(true)} />
           <Reading />
         </div>
       )}

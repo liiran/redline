@@ -170,7 +170,7 @@ describe("reading a sketch", () => {
   })
 
   it("never puts two boxes on top of each other", () => {
-    for (const slug of ["url-shortener", "cached-feed", "checkout", "microservices"]) {
+    for (const slug of TEMPLATES.map((t) => t.slug)) {
       const d = layout(template(slug))
       for (const a of d.nodes) {
         for (const b of d.nodes) {

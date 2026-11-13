@@ -26,6 +26,7 @@ import { compact, nodeHealth, type Health } from "../../shared/analyze.ts"
 import { CATALOG, KINDS, edgeRole } from "../../shared/catalog.ts"
 import { edgeId, nodeSettings, type Design, type DesignNode } from "../../shared/design.ts"
 import { NODE_HEIGHT, NODE_WIDTH } from "../../shared/normalize.ts"
+import { arrowBetween, type Point, type Rect } from "../../shared/route.ts"
 import type { Sample } from "../../shared/samples.ts"
 import type { Issue } from "../../shared/validate.ts"
 import { addConnected, removeSelection } from "./actions.ts"
@@ -33,16 +34,19 @@ import { photoUrl } from "./api.ts"
 import { KindIcon } from "./kinds.tsx"
 import { useApp } from "./store.ts"
 
+/** How the canvas fits a design on screen: snug, and never zoomed in past life size. */
+export const FIT = { padding: 0.08, maxZoom: 1.1 }
+
 type BoxData = { node: DesignNode; health: Health | null; issue: boolean; live: boolean; dim: boolean }
 type PhotoData = { url: string }
-type FlowData = { rate: number; live: boolean; dim: boolean; focus: boolean }
+type FlowData = { rate: number; live: boolean; dim: boolean; focus: boolean; route: { path: string; label: Point } | null }
 
 const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<BoxData>>) {
   const { node, health, issue, live, dim } = data
   const replicas = nodeSettings(node).replicas
   const status = live && health ? health.status : "idle"
   const info = CATALOG[node.kind]
-  const idle = info.title.toLowerCase() === node.label.toLowerCase() || node.kind === "client" ? info.short : `${info.title} · ${info.short}`
+  const idle = info.tag.toLowerCase() === node.label.toLowerCase() || info.title.toLowerCase() === node.label.toLowerCase() ? info.short : info.tag
   const lines = live && health ? health.lines : [idle, null]
   return (
     <>
@@ -106,16 +110,25 @@ function FlowEdge({ id, source, target, data, selected, markerEnd }: EdgeProps<E
   const from = useInternalNode(source)
   const to = useInternalNode(target)
   if (!from || !to) return null
-  const e = ends(from, to)
-  const [path, mx, my] = getBezierPath({
-    sourceX: e.sx,
-    sourceY: e.sy,
-    sourcePosition: e.sp,
-    targetX: e.tx,
-    targetY: e.ty,
-    targetPosition: e.tp,
-    curvature: 0.35,
-  })
+  let path: string
+  let mx: number
+  let my: number
+  if (data?.route) {
+    path = data.route.path
+    mx = data.route.label.x
+    my = data.route.label.y
+  } else {
+    const e = ends(from, to)
+    ;[path, mx, my] = getBezierPath({
+      sourceX: e.sx,
+      sourceY: e.sy,
+      sourcePosition: e.sp,
+      targetX: e.tx,
+      targetY: e.ty,
+      targetPosition: e.tp,
+      curvature: 0.35,
+    })
+  }
   const rate = data?.rate ?? 0
   const flowing = !!data?.live && rate > 0
   const width = flowing ? Math.min(4, 1.25 + Math.log10(1 + rate) * 0.8) : 1.25
@@ -183,6 +196,7 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
   // React Flow hides a box until it knows its size. Boxes are rebuilt on every change, so their
   // measured sizes are kept here and handed back, or each rebuild would blink them out for a frame.
   const sizes = useRef(new Map<string, { width: number; height: number }>())
+  const [sizeTick, setSizeTick] = useState(0)
 
   // Hovering or selecting a box fades everything it isn't connected to.
   const focus = hovered ?? (design.nodes.some((n) => n.id === selected) ? selected : null)
@@ -230,6 +244,25 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
     return out
   }, [design, showPhoto, live, runningIds, selected, sample, previous, flagged, near])
 
+  // Arrows that run left to right go around the boxes between their ends.
+  const routes = useMemo(() => {
+    const rects = new Map<string, Rect>()
+    for (const node of design.nodes) {
+      const size = sizes.current.get(node.id)
+      const copies = Math.min(2, nodeSettings(node).replicas - 1) * 4
+      rects.set(node.id, { x: node.x, y: node.y, w: (size?.width ?? NODE_WIDTH) + copies, h: (size?.height ?? NODE_HEIGHT) + copies })
+    }
+    const out = new Map<string, { path: string; label: Point } | null>()
+    for (const edge of design.edges) {
+      const a = rects.get(edge.from)
+      const b = rects.get(edge.to)
+      if (!a || !b) continue
+      const others = [...rects.entries()].filter(([id]) => id !== edge.from && id !== edge.to).map(([, rect]) => rect)
+      out.set(edge.id, arrowBetween(a, b, others))
+    }
+    return out
+  }, [design.nodes, design.edges, sizeTick])
+
   const edges = useMemo(() => {
     const byId = new Map(design.nodes.map((node) => [node.id, node]))
     return design.edges.map((edge): Edge => {
@@ -248,18 +281,24 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
           live,
           dim: !!focus && edge.from !== focus && edge.to !== focus,
           focus: !!focus && (edge.from === focus || edge.to === focus),
+          route: routes.get(edge.id) ?? null,
         } satisfies FlowData,
         style: ok ? undefined : { stroke: "var(--red)" },
       }
     })
-  }, [design, live, sample, selected, focus])
+  }, [design, live, sample, selected, focus, routes])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       const moves = new Map<string, { x: number; y: number }>()
       const removed: string[] = []
+      let resized = false
       for (const change of changes) {
-        if (change.type === "dimensions" && change.dimensions) sizes.current.set(change.id, change.dimensions)
+        if (change.type === "dimensions" && change.dimensions) {
+          const before = sizes.current.get(change.id)
+          sizes.current.set(change.id, change.dimensions)
+          if (!before || Math.abs(before.width - change.dimensions.width) > 1 || Math.abs(before.height - change.dimensions.height) > 1) resized = true
+        }
         if (change.type === "position" && change.position && change.id !== "__photo") moves.set(change.id, change.position)
         if (change.type === "select" && change.selected) select(change.id)
         if (change.type === "remove") removed.push(change.id)
@@ -277,6 +316,7 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
         )
       }
       if (removed.length) removeSelection(removed)
+      if (resized) setSizeTick((n) => n + 1)
     },
     [edit, select],
   )
@@ -350,13 +390,13 @@ export function Canvas({ design, issues }: { design: Design; issues: Issue[] }) 
           setDrop(null)
         }}
         fitView
-        fitViewOptions={{ padding: 0.25, maxZoom: 1.2 }}
+        fitViewOptions={FIT}
         minZoom={0.2}
         maxZoom={2}
         deleteKeyCode={["Backspace", "Delete"]}
         multiSelectionKeyCode={["Shift"]}
         proOptions={{ hideAttribution: true }}
-        onInit={() => flow.fitView({ padding: 0.25, maxZoom: 1.2 })}
+        onInit={() => flow.fitView(FIT)}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
       </ReactFlow>

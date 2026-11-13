@@ -17,6 +17,8 @@ export type SettingKey = keyof Settings
 export type KindInfo = {
   title: string
   short: string
+  /** What a box of this kind says under its name: short enough to always fit. */
+  tag: string
   blurb: string
   runs: string
   image: "runtime" | "postgres" | "redis" | "none"
@@ -30,6 +32,7 @@ const base: Settings = { cpus: 0.5, memoryMb: 128, replicas: 1, workMs: 0, pool:
 
 export const CATALOG: Record<Kind, KindInfo> = {
   client: {
+    tag: "Traffic source",
     short: "Traffic source",
     title: "Users",
     blurb: "Where the traffic comes from.",
@@ -40,6 +43,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: [],
   },
   cdn: {
+    tag: "CDN · edge cache",
     short: "Edge cache",
     title: "CDN",
     blurb: "Keeps copies of responses close to users and answers repeat reads itself.",
@@ -50,6 +54,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: ["ttlSec"],
   },
   loadbalancer: {
+    tag: "Load balancer",
     short: "Round robin",
     title: "Load balancer",
     blurb: "Spreads requests across every copy of the services behind it.",
@@ -60,6 +65,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: ["cpus"],
   },
   service: {
+    tag: "Service",
     short: "Your code",
     title: "Service",
     blurb: "Your application code: it handles a request and talks to what it points at.",
@@ -70,6 +76,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: ["replicas", "cpus"],
   },
   worker: {
+    tag: "Background worker",
     short: "Background jobs",
     title: "Worker",
     blurb: "Takes jobs off a queue and does the slow part in the background.",
@@ -80,6 +87,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: ["replicas", "cpus"],
   },
   queue: {
+    tag: "Job queue",
     short: "Redis Streams",
     title: "Queue",
     blurb: "Holds jobs until a worker picks them up.",
@@ -90,6 +98,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: [],
   },
   cache: {
+    tag: "Redis cache",
     short: "Redis",
     title: "Cache",
     blurb: "Keeps hot data in memory so reads skip the database.",
@@ -100,6 +109,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: ["ttlSec"],
   },
   database: {
+    tag: "Postgres database",
     short: "PostgreSQL",
     title: "Database",
     blurb: "Stores the data. Every write lands here.",
@@ -110,6 +120,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     primary: ["cpus"],
   },
   external: {
+    tag: "Outside service",
     short: "Outside service",
     title: "External API",
     blurb: "A service you don't run, like payments or email. Redline stands in for it with a fixed delay.",
