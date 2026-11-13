@@ -52,10 +52,11 @@ export type TestRow = {
 export type Reading = { design: Design; ms: number; model: string; costUsd: number | null; boxes: number; arrows: number }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const write = method !== "GET"
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: write ? { "Content-Type": "application/json" } : undefined,
+    body: write ? JSON.stringify(body ?? {}) : undefined,
   })
   const text = await res.text()
   const data = text ? JSON.parse(text) : null

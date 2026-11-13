@@ -2,13 +2,14 @@ import { existsSync, readFileSync, statSync } from "node:fs"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import { extname, join, normalize, sep } from "node:path"
 import { z } from "zod"
-import { designSchema } from "../shared/design.ts"
+import { designSchema, type Design } from "../shared/design.ts"
 import { TEMPLATES } from "../shared/templates.ts"
 import { canRun, validate } from "../shared/validate.ts"
 import type { Docker } from "./docker.ts"
 import type { Image, Reader } from "./recognize.ts"
 import { toDesign } from "./recognize.ts"
-import { Session } from "./session.ts"
+import { DockerRuntime } from "./docker-runtime.ts"
+import { Session, type Runtime } from "./session.ts"
 import type { Store } from "./store.ts"
 
 export const DIST = join(import.meta.dirname, "..", "dist")
@@ -48,7 +49,8 @@ export type AppOptions = {
   reader: Reader | null
   port: number
   dist?: string
-  makeSession?: (design: z.infer<typeof designSchema>, designId: string | null) => Session
+  runtime?: (design: Design, runId: string) => Runtime
+  ramp?: { settle?: number; hold?: number }
 }
 
 export class App {
@@ -84,8 +86,9 @@ export class App {
   }
 
   async close() {
-    for (const client of this.#clients) client.end()
     await this.session?.stop()
+    for (const client of this.#clients) client.end()
+    this.#clients.clear()
     await new Promise((resolve) => this.server.close(resolve))
   }
 
@@ -101,7 +104,10 @@ export class App {
 
   #broadcast(event: string, data: unknown) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-    for (const client of this.#clients) client.write(payload)
+    for (const client of this.#clients) {
+      if (client.writableEnded || client.destroyed) this.#clients.delete(client)
+      else client.write(payload)
+    }
   }
 
   /**
@@ -244,7 +250,8 @@ export class App {
       if (!canRun(issues)) throw new HttpError(400, issues.find((issue) => issue.level === "error")!.message)
       const designId = typeof body.designId === "string" && /^[a-f0-9]{16}$/.test(body.designId) ? body.designId : null
       await this.session?.stop()
-      const session = this.#options.makeSession?.(design, designId) ?? new Session({ docker, store }, design, designId)
+      const runtime = this.#options.runtime ?? ((d: Design, runId: string) => new DockerRuntime(docker, d, runId, store.dir))
+      const session = new Session({ store, runtime: (runId) => runtime(design, runId), ramp: this.#options.ramp }, design, designId)
       this.session = session
       this.#attach(session)
       void session.start()

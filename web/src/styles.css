@@ -677,6 +677,7 @@ kbd,
 
 .start {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   height: 100%;
   overflow-y: auto;
@@ -684,7 +685,9 @@ kbd,
 }
 
 .start-inner {
-  width: min(760px, 100%);
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
 }
 
 .hero {
@@ -801,6 +804,7 @@ kbd,
 
 .recent-row {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
