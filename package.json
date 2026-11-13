@@ -1,0 +1,43 @@
+{
+  "name": "redline",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Draw a system on a whiteboard. Redline runs it in real containers and pushes traffic until it breaks.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "npm run build && node --disable-warning=ExperimentalWarning server/main.ts",
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:go": "node scripts/go-test.mjs",
+    "test:docker": "vitest run --config vitest.docker.config.ts",
+    "e2e": "node e2e/ui.mjs",
+    "eval": "node --disable-warning=ExperimentalWarning eval/run.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@ui-sdk/core": "0.1.0-beta.1",
+    "@ui-sdk/react": "0.1.0-beta.1",
+    "@xyflow/react": "^12.12.1",
+    "lucide-react": "^1.72.0",
+    "perfect-freehand": "^1.2.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "playwright-core": "^1.65.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

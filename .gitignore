@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.redline/
+*.tsbuildinfo
+.env*
+!.env.example
