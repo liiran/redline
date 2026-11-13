@@ -1,14 +1,14 @@
 // Records the README demo and pictures from a real run.
 //
-// The demo: type a description, let Claude draw it, open a box, run it in Docker, find the breaking
-// point, apply the suggested fix, run again and see the number go up. Chrome's frames are captured as
-// they're drawn, and while the script is only waiting (for Claude, containers or the step-up test) each
-// frame is given a fraction of its real time, so those stretches play fast and the rest at normal
-// speed. ffmpeg turns the frames into docs/img/demo.mp4 and docs/img/demo.gif. Pictures of the start
-// page, the editor and the live view, light and dark, are taken along the way.
+// The demo, about 25 seconds: type a short description, let Claude draw it, add a cache by dragging an
+// arrow out of the API, run it in Docker and find the breaking point. Chrome's frames are captured as
+// they're drawn. Clicks and typing play at normal speed; each wait (for Claude, the containers or the
+// step-up test) is squeezed into a second or a few, however long it really took. ffmpeg turns the
+// frames into docs/img/demo.mp4 and docs/img/demo.gif. Pictures of the start page, the editor and the
+// live view, light and dark, are taken afterwards.
 //
 // Needs Docker, plus Claude Code signed in or an ANTHROPIC_API_KEY (without one, the demo starts from
-// an example). About eight minutes and a few cents of Claude usage.
+// an example). About four minutes and a cent or two of Claude usage.
 import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,7 +28,7 @@ const work = mkdtempSync(join(tmpdir(), "redline-video-"))
 const out = join(root, "docs", "img")
 mkdirSync(out, { recursive: true })
 
-const DEMO = "Users hit a load balancer in front of an API. The API reads from Redis and falls back to Postgres."
+const DEMO = "Users hit an API that saves orders to Postgres. Nothing else."
 const SIZE = { width: 1280, height: 800 }
 const FPS = 30
 
@@ -66,42 +66,49 @@ const shot = async (page, name) => {
   await page.emulateMedia({ colorScheme: "light" })
 }
 
-// While only waiting, frames play `speed` times faster than they happened.
-let speed = 1
-async function waiting(fast, fn) {
-  speed = fast
-  await fn()
-  speed = 1
+// A wait (for Claude, containers or the step-up test) plays in a set number of seconds, however long
+// it really took. Frames are tagged with the wait they fall in, and stretched to fit when rendering.
+const waits = []
+let current = null
+async function waiting(seconds, fn) {
+  current = { seconds, real: 0 }
+  waits.push(current)
+  try {
+    await fn()
+  } finally {
+    current = null
+  }
 }
 
 const frames = []
 const framesDir = join(work, "frames")
 mkdirSync(framesDir)
 
-/** Captures what Chrome draws, keeping at most FPS frames per second of the finished video. */
+/** Captures what Chrome draws: every frame up to FPS normally, and a few a second while waiting. */
 async function capture(page) {
   const cdp = await page.context().newCDPSession(page)
   let last = -Infinity
   cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
     cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {})
     const t = metadata.timestamp
-    if (t - last < speed / FPS) return
+    if (t - last < (current ? 1 / 6 : 1 / FPS)) return
     last = t
     const file = join(framesDir, `${String(frames.length).padStart(6, "0")}.jpg`)
-    frames.push({ file, t, speed })
+    frames.push({ file, t, wait: current })
     writeFileSync(file, Buffer.from(data, "base64"))
   })
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 88, maxWidth: SIZE.width, maxHeight: SIZE.height, everyNthFrame: 1 })
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 90, maxWidth: SIZE.width, maxHeight: SIZE.height, everyNthFrame: 1 })
   return () => cdp.send("Page.stopScreencast").catch(() => {})
 }
 
-/** Joins the frames into a video: each lasts its real time, divided by the speed it was taken at. */
+/** Joins the frames into a video: each lasts its real time, except waits, which are squeezed to their set length. */
 function render() {
+  const gaps = frames.map((f, i) => (frames[i + 1] ? frames[i + 1].t - f.t : 0))
+  frames.forEach((f, i) => f.wait && (f.wait.real += gaps[i]))
   const list = []
   let seconds = 0
   frames.forEach((f, i) => {
-    const next = frames[i + 1]
-    const duration = next ? Math.min(2, (next.t - f.t) / f.speed) : 2
+    const duration = !frames[i + 1] ? 2.5 : f.wait ? (gaps[i] * f.wait.seconds) / f.wait.real : Math.min(2, gaps[i])
     seconds += duration
     list.push(`file '${f.file.replaceAll("\\", "/")}'`, `duration ${duration.toFixed(4)}`)
   })
@@ -130,7 +137,7 @@ try {
   async function glide(locator) {
     const box = await locator.boundingBox()
     const to = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-    await page.mouse.move(to.x, to.y, { steps: Math.max(14, Math.round(Math.hypot(to.x - mouse.x, to.y - mouse.y) / 16)) })
+    await page.mouse.move(to.x, to.y, { steps: Math.max(10, Math.round(Math.hypot(to.x - mouse.x, to.y - mouse.y) / 26)) })
     mouse = to
   }
   async function click(locator) {
@@ -145,43 +152,71 @@ try {
   await page.getByRole("heading", { name: /Find where your system/ }).waitFor()
   await page.mouse.move(mouse.x, mouse.y)
   const stop = await capture(page)
-  await page.waitForTimeout(2400)
+  await page.waitForTimeout(900)
 
   // 1. Describe a system and let Claude draw it.
   const status = await (await fetch(`${base}/api/status`)).json()
   if (status.ai) {
     await click(page.getByRole("textbox", { name: "Describe your system" }))
-    await page.keyboard.type(DEMO, { delay: 28 })
-    await page.waitForTimeout(600)
+    await page.keyboard.type(DEMO, { delay: 24 })
+    await page.waitForTimeout(350)
     await page.keyboard.press("Enter")
-    await waiting(6, () => boxes.first().waitFor({ timeout: 120_000 }))
+    // The start page has boxes of its own (the sample), so wait for the editor's Run button instead.
+    await waiting(1.2, () => page.getByRole("button", { name: "Run", exact: true }).waitFor({ timeout: 120_000 }))
   } else {
-    await click(page.locator(".card", { hasText: "Cached feed" }))
-    await boxes.first().waitFor()
+    await click(page.locator(".card", { hasText: "URL shortener" }))
   }
-  await page.waitForTimeout(1800)
+  await page.locator(".sample-window").waitFor({ state: "detached" })
+  await boxes.first().waitFor()
+  await page.waitForTimeout(1300)
 
-  // 2. Look at the API box and what it's set to.
-  const named = boxes.filter({ hasText: /API/ })
-  const api = (await named.count()) ? named.first() : boxes.nth(1)
-  await glide(api)
-  await page.waitForTimeout(700)
-  await click(api)
-  await page.waitForTimeout(2600)
-  await page.keyboard.press("Escape")
+  // 2. Add one thing: drag an arrow out of the API onto empty canvas and pick a cache.
+  const api = boxes.filter({ has: page.locator(".box-sub", { hasText: /^Service$/ }) }).first()
+  const handle = api.locator(".react-flow__handle.source")
+  await glide(handle)
+  await page.mouse.down()
+  const from = await handle.boundingBox()
+  // The first spot near the API with nothing on it.
+  const to = await page.evaluate(({ x, y }) => {
+    const spots = [[150, 150], [150, -150], [40, 190], [40, -190], [260, 220], [260, -220]].map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+    return spots.find((p) => document.elementFromPoint(p.x, p.y)?.classList.contains("react-flow__pane")) ?? spots[0]
+  }, from)
+  await page.mouse.move(to.x, to.y, { steps: 22 })
+  mouse = to
+  await page.mouse.up()
   await page.waitForTimeout(500)
+  const cache = page.getByRole("menuitem", { name: /^Cache/ })
+  if (!(await cache.count())) {
+    await page.screenshot({ path: join(work, "..", "redline-media-failed.png") })
+    throw new Error(`No drop menu after dragging to ${JSON.stringify(to)}; see redline-media-failed.png in ${tmpdir()}`)
+  }
+  await click(cache)
+  // The new box opens in the panel with its settings.
+  await page.waitForTimeout(1600)
+  await page.mouse.move(to.x - 220, to.y + 120, { steps: 14 })
+  mouse = { x: to.x - 220, y: to.y + 120 }
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(400)
 
   // 3. Run it in Docker and find the breaking point.
   await click(page.getByRole("button", { name: "Run", exact: true }))
   const find = page.getByRole("button", { name: "Find the breaking point" })
-  await waiting(6, () => find.waitFor({ timeout: 300_000 }))
-  await page.waitForTimeout(1500)
+  await waiting(2, () => find.waitFor({ timeout: 300_000 }))
+  await page.waitForTimeout(500)
   await click(find)
-  await waiting(10, () => page.locator(".capacity").waitFor({ timeout: 400_000 }))
+  await waiting(4.5, () => page.locator(".capacity").waitFor({ timeout: 400_000 }))
   await page.locator(".panel").evaluate((el) => el.scrollTo({ top: 0 }))
-  await page.waitForTimeout(3200)
+  await glide(page.locator(".capacity"))
+  await page.waitForTimeout(3000)
 
-  // Pictures of the live view, while the boxes still show the load.
+  await stop()
+
+  // 4. The video, made first so the pictures below can't cost the recording.
+  const { seconds, real } = render()
+  console.log(`Captured ${frames.length} frames over ${real.toFixed(0)} s; the video runs ${seconds.toFixed(1)} s`)
+
+  // Pictures of the live view, at the rate where it broke.
   const first = await (await fetch(`${base}/api/session`)).json()
   await post("/api/session/rate", { rps: first.ramp.result.failedAt ?? 500 })
   const big = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: "light" })
@@ -190,28 +225,8 @@ try {
   await big.waitForTimeout(4500)
   await shot(big, "live")
   await big.close()
-
-  // 4. Apply the suggested fix and run the changed design.
-  await click(page.locator(".suggestion").first().getByRole("button", { name: "Apply" }))
-  await page.waitForTimeout(1800)
-  await click(page.getByRole("button", { name: "Run the new design" }))
-  await waiting(6, () => find.waitFor({ timeout: 300_000 }))
-  await page.waitForTimeout(1200)
-  await click(find)
-  // Done when the panel lists both tests (its heading is already there from the first).
-  await waiting(10, () => page.waitForFunction(() => document.querySelectorAll(".compare-row").length >= 2 && document.querySelector(".capacity"), null, { timeout: 400_000 }))
-  await page.locator(".panel").evaluate((el) => el.scrollTo({ top: 0 }))
-  await page.waitForTimeout(2500)
-  await page.locator(".panel").evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }))
-  await page.waitForTimeout(3500)
-
-  await stop()
   await stopSession()
   await context.close()
-
-  // 5. The video, made first so the pictures below can't cost the recording.
-  const { seconds, real } = render()
-  console.log(`Captured ${frames.length} frames over ${real.toFixed(0)} s; the video runs ${seconds.toFixed(0)} s`)
 
   // The start page and the editor, once nothing is running.
   const still = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: "light" })
