@@ -1,7 +1,8 @@
 // Records the README demo and pictures from a real run.
 //
-// The demo, about 25 seconds: type a short description, let Claude draw it, add a cache by dragging an
-// arrow out of the API, run it in Docker and find the breaking point. Chrome's frames are captured as
+// The demo, about 40 seconds: type a short description, let Claude draw it, add a cache by dragging an
+// arrow out of the API, run it in Docker and find the breaking point, then apply the suggested fix, run
+// again and see the two tests side by side. Chrome's frames are captured as
 // they're drawn. Clicks and typing play at normal speed; each wait (for Claude, the containers or the
 // step-up test) is squeezed into a second or a few, however long it really took. ffmpeg turns the
 // frames into docs/img/demo.mp4 and docs/img/demo.gif. Pictures of the start page, the editor and the
@@ -192,7 +193,7 @@ try {
   }
   await click(cache)
   // The new box opens in the panel with its settings.
-  await page.waitForTimeout(1600)
+  await page.waitForTimeout(2400)
   await page.mouse.move(to.x - 220, to.y + 120, { steps: 14 })
   mouse = { x: to.x - 220, y: to.y + 120 }
   await page.mouse.down()
@@ -202,17 +203,41 @@ try {
   // 3. Run it in Docker and find the breaking point.
   await click(page.getByRole("button", { name: "Run", exact: true }))
   const find = page.getByRole("button", { name: "Find the breaking point" })
-  await waiting(2, () => find.waitFor({ timeout: 300_000 }))
-  await page.waitForTimeout(500)
+  await waiting(2.5, () => find.waitFor({ timeout: 300_000 }))
+  await page.waitForTimeout(600)
   await click(find)
-  await waiting(4.5, () => page.locator(".capacity").waitFor({ timeout: 400_000 }))
+  await waiting(7, () => page.locator(".capacity").waitFor({ timeout: 400_000 }))
   await page.locator(".panel").evaluate((el) => el.scrollTo({ top: 0 }))
   await glide(page.locator(".capacity"))
   await page.waitForTimeout(3000)
 
+  // 4. Apply the first suggested fix, run the changed design and test it again.
+  const suggestion = page.locator(".suggestion").first()
+  await glide(suggestion)
+  await page.waitForTimeout(700)
+  await click(suggestion.getByRole("button", { name: "Apply" }))
+  await page.waitForTimeout(1400)
+  await click(page.getByRole("button", { name: "Run the new design" }))
+  await waiting(2.5, async () => {
+    await find.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {})
+    await find.waitFor({ timeout: 300_000 })
+  })
+  await page.waitForTimeout(500)
+  await click(find)
+  // Done when the panel lists both tests (its heading is already there from the first).
+  await waiting(6, () => page.waitForFunction(() => document.querySelectorAll(".compare-row").length >= 2 && document.querySelector(".capacity"), null, { timeout: 400_000 }))
+  await page.locator(".panel").evaluate((el) => el.scrollTo({ top: 0 }))
+  await glide(page.locator(".capacity"))
+  await page.waitForTimeout(2000)
+  // Down to the two tests side by side.
+  await page.locator(".panel").evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }))
+  await page.waitForTimeout(800)
+  await glide(page.locator(".compare-row").first())
+  await page.waitForTimeout(3200)
+
   await stop()
 
-  // 4. The video, made first so the pictures below can't cost the recording.
+  // 5. The video, made first so the pictures below can't cost the recording.
   const { seconds, real } = render()
   console.log(`Captured ${frames.length} frames over ${real.toFixed(0)} s; the video runs ${seconds.toFixed(1)} s`)
 

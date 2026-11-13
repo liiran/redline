@@ -2,7 +2,7 @@
 
 **Describe or sketch a backend. Redline runs it in real containers and pushes traffic until it breaks.**
 
-![Typing a one-line description, Claude drawing it as boxes, dragging out a cache, running it in Docker and finding that the API breaks at 630 requests a second](docs/img/demo.gif)
+![Typing a one-line description, Claude drawing it as boxes, dragging out a cache, running it in Docker, finding that the API runs out of CPU, then applying the suggested fix and holding 1.6 times the traffic](docs/img/demo.gif)
 
 [Watch it as a video](docs/img/demo.mp4). The waits for Claude, Docker and the test are squeezed to a few seconds; everything else is real time.
 
