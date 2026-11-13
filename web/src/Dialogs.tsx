@@ -49,7 +49,7 @@ export function SketchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   return (
     <Dialog open={open} onOpenChange={(next) => onOpenChange(next)}>
       <DialogBackdrop />
-      <DialogContent className="wide">
+      <DialogContent className="sketch">
         <div className="dialog-head">
           <DialogTitle>Sketch your system</DialogTitle>
           <DialogDescription>Draw boxes, write what each one is (API, Postgres, Redis, queue…) and connect them with arrows.</DialogDescription>

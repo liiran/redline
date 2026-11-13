@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { edgeRole, settingsFor, type Kind } from "./catalog.ts"
+import { edgeRole, formatSetting, nextChoice, settingText, settingsFor, type Kind } from "./catalog.ts"
 import { designSchema, slug, uniqueId, type Design } from "./design.ts"
 import { NODE_HEIGHT, NODE_WIDTH, cleanName, connectAll, fromSketch, guessKind, layout, orientEdges, separate } from "./normalize.ts"
 import { TEMPLATES, template } from "./templates.ts"
-import { canRun, containerCount, cpuBudget, validate } from "./validate.ts"
+import { canRun, connectionsTo, containerCount, cpuBudget, validate } from "./validate.ts"
 
 function design(nodes: [string, Design["nodes"][number]["kind"]][], edges: [string, string][]): Design {
   return {
@@ -40,8 +40,19 @@ describe("catalog", () => {
   })
 
   it("clamps settings and ignores ones a kind doesn't have", () => {
-    expect(settingsFor("service", { replicas: 99, cpus: 0 })).toMatchObject({ replicas: 8, cpus: 0.1 })
+    expect(settingsFor("service", { replicas: 99, cpus: 0 })).toMatchObject({ replicas: 8, cpus: 0.25 })
     expect(settingsFor("database", { replicas: 3 }).replicas).toBe(1)
+  })
+
+  it("speaks in standard sizes: vCPU, replicas, CPU per request, TTL", () => {
+    expect(formatSetting("cpus", 0.5)).toBe("0.5 vCPU")
+    expect(formatSetting("ttlSec", 60)).toBe("1 min")
+    expect(formatSetting("memoryMb", 1024)).toBe("1 GB")
+    expect(nextChoice("cpus", 0.5, 1)).toBe(1)
+    expect(nextChoice("cpus", 4, 1)).toBeNull()
+    expect(nextChoice("workMs", 5, -1)).toBe(1)
+    expect(settingText("worker", "workMs").label).toBe("CPU per job")
+    expect(settingText("service", "replicas").label).toBe("Replicas")
   })
 })
 
@@ -95,7 +106,14 @@ describe("validate", () => {
     const d = template("cached-feed")
     expect(containerCount(d)).toBe(6)
     expect(cpuBudget(d)).toBe(5)
-    expect(validate(d, 4).some((i) => i.message.includes("CPU cores"))).toBe(true)
+    expect(validate(d, 4).some((i) => i.message.includes("vCPU"))).toBe(true)
+  })
+
+  it("warns when the boxes would open more database connections than Postgres accepts", () => {
+    const d = template("url-shortener")
+    d.nodes.find((n) => n.id === "api")!.settings = { replicas: 8, pool: 50 }
+    expect(connectionsTo(d, "postgres")).toBe(400)
+    expect(validate(d).some((i) => i.nodeId === "postgres" && i.message.includes("accepts 300"))).toBe(true)
   })
 })
 

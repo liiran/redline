@@ -116,11 +116,11 @@ await check("hovering a box fades the boxes it isn't connected to", async () => 
   await page.waitForFunction(() => document.querySelectorAll(".box[data-dim]").length === 0)
 })
 
-await check("copies change the badge, and undo puts it back", async () => {
+await check("replicas change the badge, and undo puts it back", async () => {
   await boxes(page).filter({ hasText: "API" }).click()
-  await page.getByRole("button", { name: "More copies" }).click()
+  await page.getByRole("button", { name: "More replicas" }).click()
   await boxes(page).filter({ hasText: "API" }).locator(".box-badge", { hasText: "×3" }).waitFor()
-  await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } })
+  await page.locator(".react-flow__pane").click({ position: { x: 300, y: 700 } })
   await page.keyboard.press("Control+z")
   await boxes(page).filter({ hasText: "API" }).locator(".box-badge", { hasText: "×2" }).waitFor()
 })

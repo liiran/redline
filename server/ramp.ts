@@ -8,6 +8,9 @@ export type { RampResult, Step }
 
 export const LADDER = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12_000, 16_000, 20_000]
 
+/** Tried in turn when even the first step fails, so a slow design still gets a number. */
+export const BELOW = [25, 10, 5]
+
 export type Driver = {
   setRate(rps: number): Promise<void>
   next(count: number, signal?: AbortSignal): Promise<Sample[]>
@@ -85,6 +88,16 @@ export async function ramp(design: Design, driver: Driver, options: RampOptions 
       }
       fail = { step, window }
       break
+    }
+    for (const rate of fail && !lastPass ? BELOW : []) {
+      await driver.setRate(0)
+      await driver.next(3, options.signal)
+      const { step, window } = await measure(rate)
+      if (step.pass) {
+        lastPass = step
+        break
+      }
+      fail = { step, window }
     }
     for (let i = 0; i < refine && fail && lastPass; i++) {
       const rate = between(lastPass.rate, fail.step.rate)

@@ -65,6 +65,16 @@ describe("ramp", () => {
     expect(system.rates.at(-1)).toBe(0)
   })
 
+  it("steps below the first rung for a slow system, so it still gets a number", async () => {
+    const system = fakeSystem(30)
+    const seen: number[] = []
+    const result = await ramp(template("url-shortener"), system, { settle: 1, hold: 2, onStep: (s) => "pass" in s && seen.push(s.rate) })
+    expect(seen.slice(0, 2)).toEqual([50, 25])
+    expect(result.capacity).toBe(25)
+    expect(result.failedAt).toBeGreaterThan(25)
+    expect(result.failedAt).toBeLessThanOrEqual(50)
+  })
+
   it("reports a system that never broke", async () => {
     const result = await ramp(template("url-shortener"), fakeSystem(1e9), { settle: 0, hold: 1 })
     expect(result.failedAt).toBeNull()

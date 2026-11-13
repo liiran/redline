@@ -58,7 +58,7 @@ export function Start({ onSketch }: { onSketch: () => void }) {
         <h1 className="hero">
           Draw a system. Watch it <em>break</em>.
         </h1>
-        <p className="lede">Describe or sketch a backend. Redline runs it in real containers and finds what breaks first.</p>
+        <p className="lede">Every box runs as a real container, so every number is measured.</p>
 
         {status && !status.docker.ok && (
           <div className="notice bad" style={{ marginBottom: 16 }}>

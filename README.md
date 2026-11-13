@@ -41,8 +41,10 @@ Take **Users → API → Postgres**.
   <img alt="The battle royale example with the Shop box selected: its connections are highlighted and the side panel lists what it gets requests from and calls" src="docs/img/editor-light.png">
 </picture>
 
-Click a box to see what it's connected to, rename it, or change what it is. Its main settings (copies and CPU for a
-service) are up front, the rest under “More settings”. To grow a design:
+Click a box to see what it's connected to, rename it, or change what it is. Settings use the sizes and names real
+deployments use: replicas, CPU in vCPU (0.25 to 4, the sizes cloud containers come in), CPU per request, database
+connections per replica, cache TTL and memory. Each one says what its value means for this design, like “one replica's
+CPU tops out near 500 requests a second” or “2 × 10 = 20 connections to Postgres, which accepts 300”. To grow a design:
 
 - **New box** in the box's panel adds one already connected to it, beside it.
 - **Drag from the dot on a box's side** to another box to draw an arrow, or let go on empty canvas to pick a new box

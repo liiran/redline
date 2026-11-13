@@ -9,6 +9,8 @@ type State = {
   status: Status | null
   design: Design | null
   designId: string | null
+  /** False for an example that was only opened: it joins "Your designs" once changed or run. */
+  saved: boolean
   history: Design[]
   future: Design[]
   selected: string | null
@@ -25,7 +27,7 @@ type State = {
 
 type Actions = {
   setStatus(status: Status): void
-  open(design: Design, designId: string | null): void
+  open(design: Design, designId: string | null, options?: { unsaved?: boolean }): void
   close(): void
   edit(change: (design: Design) => Design, options?: { coalesce?: string }): void
   undo(): void
@@ -58,6 +60,7 @@ export const useApp = create<State & Actions>((set, get) => ({
   status: null,
   design: null,
   designId: null,
+  saved: false,
   history: [],
   future: [],
   selected: null,
@@ -72,14 +75,15 @@ export const useApp = create<State & Actions>((set, get) => ({
 
   setStatus: (status) => set({ status }),
 
-  open: (design, designId) => {
+  open: (design, designId, options) => {
     const id = designId ?? newId()
-    set({ design, designId: id, history: [], future: [], selected: null, tests: [] })
+    const saved = !!designId || !options?.unsaved
+    set({ design, designId: id, saved, history: [], future: [], selected: null, tests: [] })
     if (designId) api.tests(id).then((tests) => get().designId === id && set({ tests })).catch(() => {})
-    else api.saveDesign(design, id).catch(() => {})
+    else if (saved) api.saveDesign(design, id).catch(() => {})
   },
 
-  close: () => set({ design: null, designId: null, history: [], future: [], selected: null, tests: [] }),
+  close: () => set({ design: null, designId: null, saved: false, history: [], future: [], selected: null, tests: [] }),
 
   edit: (change, options) => {
     const current = get().design
@@ -146,8 +150,16 @@ function scheduleSave() {
   saveTimer = setTimeout(() => {
     const { design, designId } = useApp.getState()
     if (!design) return
-    api.saveDesign(design, designId).catch(() => {})
+    api.saveDesign(design, designId).then(() => useApp.getState().designId === designId && useApp.setState({ saved: true })).catch(() => {})
   }, 500)
+}
+
+/** Saves an example that was only opened, before it's run, so its tests have a design to belong to. */
+export async function ensureSaved() {
+  const { design, designId, saved } = useApp.getState()
+  if (!design || saved) return
+  await api.saveDesign(design, designId)
+  if (useApp.getState().designId === designId) useApp.setState({ saved: true })
 }
 
 export function currentSample(state: Pick<State, "samples" | "session">) {

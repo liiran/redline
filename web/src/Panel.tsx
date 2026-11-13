@@ -3,14 +3,14 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/react/menu"
 import { AlertTriangle, ArrowLeftRight, Check, CircleAlert, Gauge, Loader2, MousePointerClick, Plus, Spline, Square, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { compact, findBottleneck, ms, nodeHealth, percent } from "../../shared/analyze.ts"
-import { CATALOG, KINDS, SETTING_INFO, edgeRole, settingsFor, type Kind, type SettingKey } from "../../shared/catalog.ts"
+import { CATALOG, KINDS, POSTGRES_MAX_CONNECTIONS, SETTING_INFO, edgeRole, formatSetting, settingText, settingsFor, type Kind, type SettingKey } from "../../shared/catalog.ts"
 import { nodeSettings, type Design, type DesignNode } from "../../shared/design.ts"
 import { errorRate } from "../../shared/samples.ts"
-import { containerCount, cpuBudget, type Issue } from "../../shared/validate.ts"
+import { connectionsTo, containerCount, cpuBudget, type Issue } from "../../shared/validate.ts"
 import { addClient, addConnected, connect, findBreakingPoint, flipEdge, openSaved, removeSelection, run, setRate, stopRamp, tryChange } from "./actions.ts"
 import type { RampResult, SessionView, TestRow } from "./api.ts"
 import { Chart } from "./Chart.tsx"
-import { Field, KindSelect, NumberField, Range, Tip } from "./Controls.tsx"
+import { Choices, Field, KindSelect, NumberField, Range, Tip } from "./Controls.tsx"
 import { KindIcon } from "./kinds.tsx"
 import { useApp } from "./store.ts"
 
@@ -83,7 +83,7 @@ function DesignSections({ design, issues, stopped }: { design: Design; issues: I
           </div>
           <div className="stat" data-bad={status?.docker.ok && cpuBudget(design) > status.docker.cpus ? "" : undefined}>
             <div className="value">{compact(cpuBudget(design))}</div>
-            <div className="label">CPU cores</div>
+            <div className="label">vCPU</div>
           </div>
           <div className="stat" data-bad={errors.length ? "" : undefined}>
             <div className="value">{errors.length}</div>
@@ -164,6 +164,48 @@ function DesignSections({ design, issues, stopped }: { design: Design; issues: I
       {tests.length > 0 && <History tests={tests} />}
     </>
   )
+}
+
+/**
+ * What a setting's value means for this design, in a sentence: the request rate a replica's CPU allows,
+ * how many database connections the boxes open, how much of the data fits in a cache.
+ */
+function explain(design: Design, node: DesignNode, key: SettingKey): string | null {
+  const settings = nodeSettings(node)
+  const byId = new Map(design.nodes.map((n) => [n.id, n]))
+  switch (key) {
+    case "workMs": {
+      const note = SETTING_INFO.workMs.choices?.find((c) => c.value === settings.workMs)?.note ?? ""
+      const ceiling = (settings.cpus * 1000) / settings.workMs
+      const what = node.kind === "worker" ? "jobs" : "requests"
+      return `${note} At ${formatSetting("cpus", settings.cpus)}, one replica's CPU tops out near ${compact(ceiling)} ${what} a second.`.trim()
+    }
+    case "pool": {
+      const databases = design.edges.filter((e) => e.from === node.id && byId.get(e.to)?.kind === "database").map((e) => byId.get(e.to)!)
+      const database = databases[0]
+      if (!database) return null
+      const mine = settings.replicas * settings.pool
+      const total = connectionsTo(design, database.id)
+      const others = total > mine ? ` (${total} with the other boxes)` : ""
+      return `${settings.replicas} × ${settings.pool} = ${mine} connections to “${database.label}”${others}, which accepts ${POSTGRES_MAX_CONNECTIONS}.`
+    }
+    case "memoryMb": {
+      if (node.kind !== "cache") return null
+      // Redis keeps data in 75% of its memory; each item costs its payload plus roughly 100 bytes of bookkeeping.
+      const room = Math.floor((settings.memoryMb * 0.75 * 1024 * 1024) / (design.workload.payloadBytes + 100))
+      const items = design.workload.keys
+      return room >= items
+        ? `Room for about ${compact(room)} items, so all ${compact(items)} of yours fit.`
+        : `Room for about ${compact(room)} of your ${compact(items)} items. Reads for the rest go to the database.`
+    }
+    case "cpus": {
+      if (node.kind !== "database") return null
+      const total = connectionsTo(design, node.id)
+      return `It accepts up to ${POSTGRES_MAX_CONNECTIONS} connections${total ? `; the boxes using it open ${total}` : ""}.`
+    }
+    default:
+      return null
+  }
 }
 
 const IN_TEXT: Partial<Record<Kind, string>> = { worker: "Takes jobs from", client: "" }
@@ -288,20 +330,35 @@ function BoxSection({ design, node, issues }: { design: Design; node: DesignNode
   const deps = live ? samples.at(-1)?.nodes[node.id]?.deps : undefined
   const changed = live && JSON.stringify(session!.design.nodes.find((n) => n.id === node.id)?.settings ?? {}) !== JSON.stringify(node.settings)
 
+  const usesDatabase = design.edges.some((e) => e.from === node.id && design.nodes.find((n) => n.id === e.to)?.kind === "database")
+  const shown = (key: SettingKey) => key !== "pool" || usesDatabase
   const setting = (key: SettingKey) => {
     const meta = SETTING_INFO[key]
+    const text = settingText(node.kind, key)
     const value = settings[key]
+    const derived = explain(design, node, key)
+    // Choices whose labels carry no unit get the value spelled out beside the name.
+    const spelled = meta.choices && (key === "cpus" || key === "workMs") ? formatSetting(key, value) : undefined
     return (
-      <Field key={key} label={meta.label} value={key === "cpus" || key === "workMs" ? `${compact(value)}${meta.unit ? ` ${meta.unit}` : ""}` : undefined} hint={meta.hint}>
-        {key === "cpus" || key === "workMs" ? (
-          <Range label={meta.label} value={value} min={meta.min} max={meta.max} step={meta.step} onChange={(v) => setSetting(key, v)} />
+      <Field
+        key={key}
+        label={text.label}
+        value={spelled}
+        hint={
+          <>
+            {derived && <span className="derived">{derived}</span>} {text.hint}
+          </>
+        }
+      >
+        {meta.choices ? (
+          <Choices label={text.label} value={value} choices={meta.choices} onChange={(v) => setSetting(key, v)} />
         ) : (
-          <NumberField label={meta.label} value={value} min={meta.min} max={meta.max} step={meta.step} onChange={(v) => setSetting(key, settingsFor(node.kind, { [key]: v })[key])} />
+          <NumberField label={text.label} value={value} min={meta.min} max={meta.max} step={meta.step} onChange={(v) => setSetting(key, settingsFor(node.kind, { [key]: v })[key])} />
         )}
       </Field>
     )
   }
-  const more = info.editable.filter((key) => !info.primary.includes(key))
+  const more = info.editable.filter((key) => !info.primary.includes(key) && shown(key))
 
   return (
     <section className="section box-section">
@@ -363,7 +420,7 @@ function BoxSection({ design, node, issues }: { design: Design; node: DesignNode
 
       <Connections design={design} node={node} />
 
-      {info.primary.map(setting)}
+      {info.primary.filter(shown).map(setting)}
       {more.length > 0 && (
         <details className="fold-inline">
           <summary>More settings</summary>

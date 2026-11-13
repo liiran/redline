@@ -1,4 +1,4 @@
-import { CATALOG, edgeRole, type Kind } from "./catalog.ts"
+import { CATALOG, POSTGRES_MAX_CONNECTIONS, edgeRole, type Kind } from "./catalog.ts"
 import { nodeSettings, type Design, type DesignNode, type Workload } from "./design.ts"
 import { PROBE_CPUS } from "./validate.ts"
 
@@ -112,7 +112,7 @@ export function compile(design: Design, options: { runId: string; runtimeImage: 
       services[node.id] = {
         image: IMAGES.postgres,
         environment: { POSTGRES_USER: PG.user, POSTGRES_PASSWORD: PG.password, POSTGRES_DB: PG.db },
-        command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=128MB", "-c", "fsync=on"],
+        command: ["postgres", "-c", `max_connections=${POSTGRES_MAX_CONNECTIONS}`, "-c", "shared_buffers=128MB", "-c", "fsync=on"],
         healthcheck: { test: ["CMD-SHELL", `pg_isready -U ${PG.user} -d ${PG.db}`], interval: "1s", timeout: "3s", retries: 60 },
         labels: labels(node.id),
         ...limits,

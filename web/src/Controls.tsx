@@ -1,10 +1,11 @@
 import { NumberInput, NumberInputControl, NumberInputDecrement, NumberInputGroup, NumberInputIncrement } from "@ui-sdk/react/number-input"
+import { SegmentedControl, SegmentedControlIndicator, SegmentedControlItem } from "@ui-sdk/react/segmented-control"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ui-sdk/react/select"
 import { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack } from "@ui-sdk/react/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@ui-sdk/react/tooltip"
 import { Minus, Plus } from "lucide-react"
 import type { ReactElement, ReactNode } from "react"
-import { CATALOG, KINDS, type Kind } from "../../shared/catalog.ts"
+import { CATALOG, KINDS, type Choice, type Kind } from "../../shared/catalog.ts"
 import { KindIcon } from "./kinds.tsx"
 
 export function Field({ label, value, hint, children }: { label: string; value?: ReactNode; hint?: ReactNode; children: ReactNode }) {
@@ -94,6 +95,20 @@ export function Range({
         </SliderTrack>
       </SliderControl>
     </Slider>
+  )
+}
+
+/** One of a few standard sizes, as a row of buttons. */
+export function Choices({ label, value, choices, onChange }: { label: string; value: number; choices: Choice[]; onChange: (value: number) => void }) {
+  return (
+    <SegmentedControl className="choices" aria-label={label} value={String(value)} onValueChange={(next) => next !== null && onChange(Number(next))}>
+      <SegmentedControlIndicator />
+      {choices.map((choice) => (
+        <SegmentedControlItem key={choice.value} value={String(choice.value)}>
+          {choice.label}
+        </SegmentedControlItem>
+      ))}
+    </SegmentedControl>
   )
 }
 

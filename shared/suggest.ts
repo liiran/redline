@@ -1,7 +1,6 @@
-import { SETTING_INFO, type SettingKey } from "./catalog.ts"
+import { POSTGRES_MAX_CONNECTIONS, SETTING_INFO, formatSetting, nextChoice, settingText, type SettingKey } from "./catalog.ts"
 import { edgeId, nodeSettings, uniqueId, type Design, type DesignNode } from "./design.ts"
 import type { Finding } from "./analyze.ts"
-import { compact } from "./analyze.ts"
 
 export type Change =
   | { kind: "set"; nodeId: string; key: SettingKey; value: number }
@@ -13,8 +12,10 @@ function label(node: DesignNode) {
   return `“${node.label}”`
 }
 
+/** The next size up: the next standard choice where there are choices, otherwise `factor` times as much. */
 function more(value: number, key: SettingKey, factor: number) {
   const info = SETTING_INFO[key]
+  if (info.choices) return nextChoice(key, value, 1) ?? value
   const next = Math.min(info.max, Math.max(value + info.step, value * factor))
   return Math.round(next / info.step) * info.step
 }
@@ -43,7 +44,7 @@ export function suggest(design: Design, finding: Finding | null): Suggestion[] {
         const next = Math.min(8, copies * 2)
         out.push({
           id: `${worker.id}-replicas`,
-          title: `Run ${next} copies of ${label(worker)}`,
+          title: `Run ${next} replicas of ${label(worker)}`,
           detail: `More workers take jobs off ${label(node)} in parallel.`,
           change: { kind: "set", nodeId: worker.id, key: "replicas", value: next },
         })
@@ -57,7 +58,9 @@ export function suggest(design: Design, finding: Finding | null): Suggestion[] {
     case "worker": {
       if (finding.pressure === "connections") {
         const databases = design.edges.filter((edge) => edge.from === node.id && byId.get(edge.to)?.kind === "database")
-        set("pool", more(settings.pool, "pool", 2.5), `Give ${label(node)} more database connections`, `Raise it from ${settings.pool} to ${more(settings.pool, "pool", 2.5)} per copy, if the database has CPU to spare.`)
+        // Never past what Postgres accepts across every replica.
+        const pool = Math.min(more(settings.pool, "pool", 2.5), Math.floor(POSTGRES_MAX_CONNECTIONS / settings.replicas))
+        set("pool", pool, `Give ${label(node)} more database connections`, `Raise it from ${settings.pool} to ${pool} per replica, if the database has CPU to spare.`)
         if (design.workload.readRatio >= 0.5 && databases.length && !cached(node.id)) {
           const db = byId.get(databases[0]!.to)!
           out.unshift({
@@ -73,15 +76,15 @@ export function suggest(design: Design, finding: Finding | null): Suggestion[] {
       if (settings.replicas < 8) {
         out.push({
           id: `${node.id}-replicas`,
-          title: `Run ${copies} copies of ${label(node)}`,
-          detail: `Each copy brings its own ${compact(settings.cpus)} CPU cores. Traffic is spread across all of them.`,
+          title: `Run ${copies} replicas of ${label(node)}`,
+          detail: `Each replica brings its own ${formatSetting("cpus", settings.cpus)}. Traffic is spread across all of them.`,
           change: { kind: "set", nodeId: node.id, key: "replicas", value: copies },
         })
       }
-      set("cpus", more(settings.cpus, "cpus", 2), `Give ${label(node)} more CPU`, `Raise it from ${compact(settings.cpus)} to ${compact(more(settings.cpus, "cpus", 2))} cores per copy.`)
-      if (node.kind === "service" && settings.workMs >= 2) {
-        const lighter = Math.max(0.5, Math.round(settings.workMs / 2))
-        set("workMs", lighter, `Make ${label(node)}'s code cheaper`, `If each request did ${compact(lighter)} ms of CPU work instead of ${compact(settings.workMs)}, the same CPU would serve about twice as many.`)
+      set("cpus", more(settings.cpus, "cpus", 2), `Give ${label(node)} more CPU`, `Raise it from ${formatSetting("cpus", settings.cpus)} to ${formatSetting("cpus", more(settings.cpus, "cpus", 2))} per replica.`)
+      const lighter = nextChoice("workMs", settings.workMs, -1)
+      if (node.kind === "service" && lighter !== null && settings.workMs >= 5) {
+        set("workMs", lighter, `Make ${label(node)}'s code cheaper`, `If each request used ${formatSetting("workMs", lighter)} of CPU instead of ${formatSetting("workMs", settings.workMs)}, the same CPU would serve ${Math.round(settings.workMs / lighter)} times as many.`)
       }
       break
     }
@@ -95,14 +98,14 @@ export function suggest(design: Design, finding: Finding | null): Suggestion[] {
           change: { kind: "add-cache", databaseId: node.id, serviceIds: uncached },
         })
       }
-      set("cpus", more(settings.cpus, "cpus", 2), `Give ${label(node)} more CPU`, `Raise it from ${compact(settings.cpus)} to ${compact(more(settings.cpus, "cpus", 2))} cores. Bigger machines are the simplest fix, until they're the most expensive.`)
+      set("cpus", more(settings.cpus, "cpus", 2), `Give ${label(node)} more CPU`, `Raise it from ${formatSetting("cpus", settings.cpus)} to ${formatSetting("cpus", more(settings.cpus, "cpus", 2))}. A bigger machine is the simplest fix, until it's the most expensive.`)
       break
     }
     case "cache":
     case "loadbalancer":
     case "cdn":
     case "queue":
-      set("cpus", more(settings.cpus, "cpus", 2), `Give ${label(node)} more CPU`, `Raise it from ${compact(settings.cpus)} to ${compact(more(settings.cpus, "cpus", 2))} cores.`)
+      set("cpus", more(settings.cpus, "cpus", 2), `Give ${label(node)} more CPU`, `Raise it from ${formatSetting("cpus", settings.cpus)} to ${formatSetting("cpus", more(settings.cpus, "cpus", 2))}.`)
       break
   }
   return out
@@ -132,5 +135,5 @@ export function describeChange(design: Design, change: Change) {
   const node = design.nodes.find((item) => item.id === (change.kind === "set" ? change.nodeId : change.databaseId))
   if (!node) return "Change"
   if (change.kind === "add-cache") return `Added a cache in front of ${label(node)}`
-  return `${label(node)}: ${SETTING_INFO[change.key].label.toLowerCase()} → ${compact(change.value)}`
+  return `${label(node)}: ${settingText(node.kind, change.key).label.toLowerCase()} → ${formatSetting(change.key, change.value)}`
 }

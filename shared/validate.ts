@@ -1,4 +1,4 @@
-import { CATALOG, edgeRole } from "./catalog.ts"
+import { CATALOG, POSTGRES_MAX_CONNECTIONS, edgeRole } from "./catalog.ts"
 import { nodeSettings, type Design, type DesignNode } from "./design.ts"
 
 export type Issue = {
@@ -25,6 +25,19 @@ export function cpuBudget(design: Design) {
   let total = PROBE_CPUS
   for (const node of design.nodes) total += nodeSettings(node).cpus * nodeSettings(node).replicas
   return Math.round(total * 100) / 100
+}
+
+/** How many connections the services and workers pointing at a database would open to it. */
+export function connectionsTo(design: Design, databaseId: string) {
+  let total = 0
+  for (const edge of design.edges) {
+    if (edge.to !== databaseId) continue
+    const from = design.nodes.find((node) => node.id === edge.from)
+    if (!from || (from.kind !== "service" && from.kind !== "worker")) continue
+    const settings = nodeSettings(from)
+    total += settings.replicas * settings.pool
+  }
+  return total
 }
 
 function name(node: DesignNode) {
@@ -159,6 +172,17 @@ export function validate(design: Design, hostCpus?: number): Issue[] {
     }
   }
 
+  for (const database of design.nodes.filter((node) => node.kind === "database")) {
+    const total = connectionsTo(design, database.id)
+    if (total > POSTGRES_MAX_CONNECTIONS) {
+      issues.push({
+        level: "warning",
+        nodeId: database.id,
+        message: `The boxes using ${name(database)} would open ${total} connections, but it accepts ${POSTGRES_MAX_CONNECTIONS}. Requests past that fail. Use fewer replicas or database connections.`,
+      })
+    }
+  }
+
   const containers = containerCount(design)
   if (containers > MAX_CONTAINERS) {
     issues.push({ level: "error", message: `This design needs ${containers} containers. Redline runs at most ${MAX_CONTAINERS}.` })
@@ -166,7 +190,7 @@ export function validate(design: Design, hostCpus?: number): Issue[] {
   if (hostCpus && cpuBudget(design) > hostCpus) {
     issues.push({
       level: "warning",
-      message: `The boxes ask for ${cpuBudget(design)} CPU cores but Docker has ${hostCpus}. They will share, so results get noisier.`,
+      message: `The boxes ask for ${cpuBudget(design)} vCPU but Docker has ${hostCpus} cores. They will share, so results get noisier.`,
     })
   }
 

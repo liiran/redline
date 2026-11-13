@@ -104,7 +104,7 @@ const SPECS: Spec[] = [
       ["cache", "cache", "Catalog cache"],
       ["db", "database", "Videos DB"],
       ["uploads", "queue", "Uploads"],
-      ["transcoder", "worker", "Transcoder", { workMs: 15 }],
+      ["transcoder", "worker", "Transcoder", { workMs: 20 }],
       ["storage", "external", "Object storage", { latencyMs: 60 }],
     ],
     edges: [

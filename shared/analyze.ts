@@ -32,6 +32,11 @@ export function ms(value: number) {
   return `${compact(value)} ms`
 }
 
+/** CPU in vCPU, to two places at most: 0.5, 0.25, 1. */
+export function vcpu(value: number) {
+  return String(Math.round(value * 100) / 100)
+}
+
 export function percent(value: number) {
   return `${Math.round(value * 100)}%`
 }
@@ -80,7 +85,7 @@ export function nodeHealth(design: Design, node: DesignNode, sample: Sample | un
   const settings = nodeSettings(node)
   const cpu = cpuLoad(usage)
   const cpuText = usage ? `CPU ${percent(Math.min(1, cpu))}` : "CPU –"
-  const copies = settings.replicas > 1 ? ` · ${data.up}/${settings.replicas} copies` : ""
+  const copies = settings.replicas > 1 ? ` · ${data.up}/${settings.replicas} up` : ""
   let load = cpu
   let pressure: Pressure = cpu >= BUSY ? "cpu" : "none"
   let lines: [string, string]
@@ -200,15 +205,15 @@ export function findBottleneck(design: Design, window: Sample[]): Finding | null
     const data = last.nodes[node.id]
     let detail: string
     if (top.pressure === "connections") {
-      detail = `Each copy of ${label(node.id)} keeps ${settings.pool} database connections, and every one was busy, so requests queued for a free one (${ms(data?.poolWaitMs ?? 0)} on average).`
+      detail = `Each replica of ${label(node.id)} keeps ${settings.pool} database connections, and every one was busy, so requests queued for a free one (${ms(data?.poolWaitMs ?? 0)} on average).`
     } else if (top.pressure === "backlog") {
       const flow = queueFlow(design, last, node.id)
       detail = `Jobs arrive at ${compact(flow.arriving)}/s but workers finish ${compact(flow.leaving)}/s, so ${compact(data?.backlog ?? 0)} are waiting and the pile keeps growing.`
     } else {
-      const cores = usage ? `${compact(usage.cores)} of its ${compact(usage.limit)} CPU cores` : "all of its CPU"
-      detail = `${label(node.id)} used ${cores}${settings.replicas > 1 ? ` across ${settings.replicas} copies` : ""}. Requests waited in line for CPU, so every answer got slower.`
+      const cores = usage ? `${vcpu(usage.cores)} of its ${vcpu(usage.limit)} vCPU` : "all of its CPU"
+      detail = `${label(node.id)} used ${cores}${settings.replicas > 1 ? ` across ${settings.replicas} replicas` : ""}. Requests waited in line for CPU, so every answer got slower.`
       if (node.kind === "database") detail += ` It was running ${compact(data?.tps ?? 0)} queries a second.`
-      if (node.kind === "service" && settings.workMs > 0) detail += ` Each request costs about ${compact(settings.workMs)} ms of CPU in your code alone.`
+      if (node.kind === "service" && settings.workMs > 0) detail += ` Each request costs ${compact(settings.workMs)} ms of CPU in your code alone.`
     }
     const what = top.pressure === "connections" ? "ran out of database connections" : top.pressure === "backlog" ? "fell behind" : "ran out of CPU"
     return { nodeId: node.id, pressure: top.pressure, load: top.load, title: `${label(node.id)} ${what}`, detail, also }

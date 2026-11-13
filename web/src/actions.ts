@@ -8,7 +8,7 @@ import { template } from "../../shared/templates.ts"
 import { canRun, validate } from "../../shared/validate.ts"
 import { api } from "./api.ts"
 import { prepareImage, type Prepared } from "./image.ts"
-import { useApp } from "./store.ts"
+import { ensureSaved, useApp } from "./store.ts"
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -70,7 +70,7 @@ export async function readText(text: string) {
 }
 
 export function openTemplate(slug: string) {
-  useApp.getState().open(template(slug), null)
+  useApp.getState().open(template(slug), null, { unsaved: true })
 }
 
 export async function openSaved(id: string) {
@@ -87,7 +87,7 @@ export function newBlank() {
   design.name = "Untitled system"
   design.nodes = design.nodes.slice(0, 1)
   design.edges = []
-  useApp.getState().open(design, null)
+  useApp.getState().open(design, null, { unsaved: true })
 }
 
 export async function run() {
@@ -99,6 +99,7 @@ export async function run() {
     return
   }
   try {
+    await ensureSaved()
     const view = await api.start(design, designId)
     useApp.getState().setSession(view, [])
   } catch (error) {

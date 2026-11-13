@@ -2,7 +2,7 @@ import { Button } from "@ui-sdk/react/button"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/react/menu"
 import { ToastRegion } from "@ui-sdk/react/toast"
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react"
-import { Image, ImageOff, LayoutGrid, Loader2, Maximize, Play, Plus, Redo2, Search, Square, Undo2 } from "lucide-react"
+import { ArrowLeft, Image, ImageOff, LayoutGrid, Loader2, Maximize, Play, Plus, Redo2, Search, Square, Undo2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CATALOG, KINDS, type Kind } from "../../shared/catalog.ts"
 import { validate } from "../../shared/validate.ts"
@@ -18,14 +18,12 @@ import { Panel } from "./Panel.tsx"
 import { Start } from "./Start.tsx"
 import { useApp } from "./store.ts"
 
-/** A gauge whose last stretch is red, with the needle in it: the redline on a rev counter. */
+/** A box with a red line running through it: the line a system shouldn't cross. */
 function Logo() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" strokeWidth="2.25" strokeLinecap="round" aria-hidden>
-      <path d="M3.5 17a8.5 8.5 0 0 1 14.51-6.01" stroke="currentColor" />
-      <path d="M18.01 10.99A8.5 8.5 0 0 1 20.5 17" stroke="var(--red)" />
-      <path d="M12 17l5-3.6" stroke="var(--red)" />
-      <circle cx="12" cy="17" r="1.6" fill="var(--red)" stroke="none" />
+    <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="4.5" stroke="currentColor" strokeWidth="2.2" />
+      <path d="M1.5 9.5h21" stroke="var(--red)" strokeWidth="2.6" />
     </svg>
   )
 }
@@ -130,6 +128,67 @@ function Reading() {
   )
 }
 
+function Brand() {
+  return (
+    <span className="brand">
+      <Logo />
+      <span>Redline</span>
+    </span>
+  )
+}
+
+function SearchButton() {
+  return (
+    <Tip text="Commands (Ctrl+K)">
+      <button className="btn ghost sm" aria-label="Commands" onClick={() => useApp.getState().setPalette(true)}>
+        <Search aria-hidden />
+        <span className="hide-narrow">
+          <kbd>Ctrl K</kbd>
+        </span>
+      </button>
+    </Tip>
+  )
+}
+
+function DesignName() {
+  const design = useApp((s) => s.design)!
+  const edit = useApp((s) => s.edit)
+  const [name, setName] = useState(design.name)
+  useEffect(() => setName(design.name), [design.name])
+  return (
+    <input
+      className="name-input"
+      aria-label="Design name"
+      value={name}
+      maxLength={80}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={() => name.trim() && name.trim() !== design.name && edit((d) => ({ ...d, name: name.trim() }))}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+    />
+  )
+}
+
+function Actions() {
+  const session = useApp((s) => s.session)
+  const status = useApp((s) => s.status)
+  const running = session && (session.phase === "ready" || session.phase === "starting")
+  return (
+    <div className="float tr">
+      <RunStatus />
+      <SearchButton />
+      {running ? (
+        <Button className="btn sm" onClick={stop}>
+          <Square aria-hidden /> Stop
+        </Button>
+      ) : (
+        <Button className="btn sm primary" onClick={run} disabled={status?.docker.ok === false}>
+          <Play aria-hidden /> Run
+        </Button>
+      )}
+    </div>
+  )
+}
+
 function Workspace() {
   const design = useApp((s) => s.design)!
   const designId = useApp((s) => s.designId)
@@ -142,6 +201,15 @@ function Workspace() {
           <Canvas design={design} issues={issues} />
           <CanvasTools />
         </ReactFlowProvider>
+        <div className="float tl">
+          <button className="back" onClick={() => useApp.getState().close()} aria-label="Back to all designs">
+            <ArrowLeft aria-hidden />
+            <span className="hide-narrow">Designs</span>
+          </button>
+          <span className="float-sep" aria-hidden />
+          <DesignName />
+        </div>
+        <Actions />
         <Reading />
       </div>
       <Panel design={design} issues={issues} />
@@ -151,16 +219,11 @@ function Workspace() {
 
 export function App() {
   const design = useApp((s) => s.design)
-  const session = useApp((s) => s.session)
   const status = useApp((s) => s.status)
   const theme = useApp((s) => s.theme)
-  const edit = useApp((s) => s.edit)
   const [sketch, setSketch] = useState(false)
   const [describe, setDescribe] = useState(false)
   const photoInput = useRef<HTMLInputElement>(null)
-  const [name, setName] = useState("")
-
-  useEffect(() => setName(design?.name ?? ""), [design?.name])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme === "system" ? "" : theme
@@ -237,56 +300,19 @@ export function App() {
     return () => clearInterval(timer)
   }, [status?.docker.ok])
 
-  const running = session && (session.phase === "ready" || session.phase === "starting")
-
   return (
     <div className="app">
-      <header className="topbar">
-        <button className="brand" onClick={() => useApp.getState().close()} aria-label="Redline home">
-          <Logo />
-          <span>Redline</span>
-        </button>
-        {design && (
-          <>
-            <span className="crumb">/</span>
-            <input
-              className="name-input"
-              aria-label="Design name"
-              value={name}
-              maxLength={80}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => name.trim() && name.trim() !== design.name && edit((d) => ({ ...d, name: name.trim() }))}
-              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            />
-          </>
-        )}
-        <span className="spacer" />
-        <RunStatus />
-        <Tip text="Commands (Ctrl+K)">
-          <button className="btn ghost sm" aria-label="Commands" onClick={() => useApp.getState().setPalette(true)}>
-            <Search aria-hidden />
-            <span className="hide-narrow">
-              <kbd>Ctrl K</kbd>
-            </span>
-          </button>
-        </Tip>
-        {design &&
-          (running ? (
-            <Button className="btn sm" onClick={stop}>
-              <Square aria-hidden /> Stop
-            </Button>
-          ) : (
-            <Button className="btn sm primary" onClick={run} disabled={status?.docker.ok === false}>
-              <Play aria-hidden /> Run
-            </Button>
-          ))}
-      </header>
-
       {design ? (
         <Workspace />
       ) : (
-        <div style={{ position: "relative", minHeight: 0 }}>
+        <div className="home">
           <Start onSketch={() => setSketch(true)} />
+          <div className="corner tl">
+            <Brand />
+          </div>
+          <div className="corner tr">
+            <SearchButton />
+          </div>
           <Reading />
         </div>
       )}
@@ -305,7 +331,7 @@ export function App() {
       <SketchDialog open={sketch} onOpenChange={setSketch} />
       <DescribeDialog open={describe} onOpenChange={setDescribe} />
       <Palette onPhoto={() => photoInput.current?.click()} onSketch={() => setSketch(true)} onDescribe={() => setDescribe(true)} />
-      <ToastRegion side="bottom" align="end" />
+      <ToastRegion side="bottom" align="center" />
     </div>
   )
 }
