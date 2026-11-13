@@ -2,12 +2,12 @@ import { Button } from "@ui-sdk/react/button"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/react/menu"
 import { ToastRegion } from "@ui-sdk/react/toast"
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react"
-import { ArrowLeft, Image, ImageOff, LayoutGrid, Loader2, Maximize, Play, Plus, Redo2, Search, Square, Undo2 } from "lucide-react"
+import { ArrowLeft, ChevronDown, Image, ImageOff, LayoutGrid, Loader2, Maximize, Play, Plus, Redo2, Search, Square, Undo2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CATALOG, KINDS, type Kind } from "../../shared/catalog.ts"
 import { validate } from "../../shared/validate.ts"
-import { addBox, openSaved, readPhoto, run, stop, tidy } from "./actions.ts"
-import { api, listen } from "./api.ts"
+import { addBox, newBlank, openSaved, readPhoto, run, stop, tidy } from "./actions.ts"
+import { api, listen, type DesignSummary } from "./api.ts"
 import { Canvas, FIT } from "./Canvas.tsx"
 import { Tip } from "./Controls.tsx"
 import { DescribeDialog, SketchDialog } from "./Dialogs.tsx"
@@ -130,10 +130,57 @@ function Reading() {
 
 function Brand() {
   return (
-    <span className="brand">
+    <span className="brand" role="img" aria-label="Redline">
       <Logo />
-      <span>Redline</span>
     </span>
+  )
+}
+
+function ago(t: number) {
+  const s = Math.round((Date.now() - t) / 1000)
+  if (s < 60) return "just now"
+  if (s < 3600) return `${Math.round(s / 60)} min ago`
+  if (s < 86_400) return `${Math.round(s / 3600)} h ago`
+  return new Date(t).toLocaleDateString()
+}
+
+/** Saved designs, from a button beside Ctrl K. */
+function DesignsMenu() {
+  const [designs, setDesigns] = useState<DesignSummary[]>([])
+  useEffect(() => {
+    api.designs().then(setDesigns).catch(() => {})
+  }, [])
+  return (
+    <Menu
+      onAction={(value) => {
+        if (value === "__blank") newBlank()
+        else void openSaved(String(value))
+      }}
+    >
+      <MenuTrigger className="btn sm designs-button">
+        <LayoutGrid aria-hidden /> Designs
+        {designs.length > 0 && <span className="count">{designs.length}</span>}
+        <ChevronDown aria-hidden />
+      </MenuTrigger>
+      <MenuContent className="menu designs-menu">
+        {designs.slice(0, 10).map((d) => (
+          <MenuItem key={d.id} value={d.id} label={d.name}>
+            <span className="designs-name">{d.name}</span>
+            <span className="menu-note">{ago(d.updatedAt)}</span>
+          </MenuItem>
+        ))}
+        {designs.length === 0 && (
+          <MenuItem value="__none" label="No designs yet" disabled>
+            <span className="menu-note" style={{ marginLeft: 0, paddingLeft: 0 }}>
+              Designs you change or run show up here
+            </span>
+          </MenuItem>
+        )}
+        <MenuItem value="__blank" label="New blank design">
+          <Plus aria-hidden /> New blank design
+        </MenuItem>
+      </MenuContent>
+    </Menu>
   )
 }
 
@@ -311,6 +358,7 @@ export function App() {
             <Brand />
           </div>
           <div className="corner tr">
+            <DesignsMenu />
             <SearchButton />
           </div>
           <Reading />

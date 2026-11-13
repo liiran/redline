@@ -118,7 +118,7 @@ try {
     await page.keyboard.press("Enter")
     await rec.watch(async () => (await boxes.count()) >= 3, { everyMs: 600, showMs: 220 })
   } else {
-    await page.locator(".card", { hasText: "Cached feed" }).click()
+    await page.locator(".example-chip", { hasText: "Cached feed" }).click()
   }
   await boxes.first().waitFor()
   await page.waitForTimeout(900)
@@ -174,9 +174,10 @@ try {
   // The start page and the editor, once nothing is running.
   await big.goto(base)
   await big.getByRole("heading", { name: /Find where your system/ }).waitFor()
-  await big.locator(".recent-row").first().waitFor()
+  await big.locator(".sample-window").waitFor()
+  await big.waitForTimeout(1500)
   await shot(big, "start")
-  await big.locator(".card", { hasText: "Battle royale backend" }).click()
+  await big.locator(".example-chip", { hasText: "Battle royale backend" }).click()
   await big.locator(".react-flow__node-box").first().waitFor()
   await big.locator(".react-flow__node-box", { hasText: "Shop" }).click()
   await big.mouse.move(5, 300)

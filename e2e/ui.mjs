@@ -83,16 +83,16 @@ const rate = (text) => {
 
 let page = await newPage()
 
-await check("start page shows the pitch, three ways in, seven examples and a blank canvas", async () => {
+await check("start page shows the pitch, three ways in, a running sample, seven examples and a blank canvas", async () => {
   await page.getByRole("heading", { name: /Find where your system/ }).waitFor()
   await page.getByRole("textbox", { name: "Describe your system" }).waitFor()
   for (const name of [/Sketch it/, /Upload a photo/]) await page.getByRole("button", { name }).waitFor()
-  expect((await page.locator(".examples .card").count()) === 8, "expected 7 examples and a blank canvas")
-  expect((await page.locator(".examples .card svg.preview").count()) === 7, "each example should show a preview")
+  await page.locator(".sample-window .live-node[data-hot]").waitFor()
+  expect((await page.locator(".example-chip").count()) === 8, "expected 7 examples and a blank canvas")
 })
 
 await check("an example opens on the canvas with its boxes and arrows", async () => {
-  await page.locator(".card", { hasText: "Cached feed" }).click()
+  await page.locator(".example-chip", { hasText: "Cached feed" }).click()
   await boxes(page).first().waitFor()
   expect((await boxes(page).count()) === 5, `expected 5 boxes, saw ${await boxes(page).count()}`)
   expect((await page.locator(".react-flow__edge").count()) === 4, "expected 4 arrows")
@@ -253,7 +253,7 @@ await check("typing on the start page draws the system", async () => {
 
 await check("a blank canvas starts with just the users", async () => {
   await page.goto(base)
-  await page.locator(".card", { hasText: "Blank canvas" }).click()
+  await page.locator(".example-chip", { hasText: "Blank canvas" }).click()
   await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-box").length === 1)
   await page.locator(".react-flow__node-box").first().click()
   await page.getByRole("button", { name: "New box" }).click()
@@ -296,10 +296,11 @@ await check("the command palette switches the theme", async () => {
 
 await check("saved designs come back on the start page", async () => {
   await page.goto(base)
-  await page.locator(".recent-row").first().waitFor()
-  expect((await page.locator(".recent-row").count()) >= 3, "expected the designs made above")
+  await page.getByRole("button", { name: /Designs/ }).click()
+  await page.getByRole("menuitem").first().waitFor()
+  expect((await page.getByRole("menuitem").count()) >= 4, "expected the designs made above, and New blank design")
   // The blank canvas from above, with the load balancer added to it.
-  await page.locator(".recent-row", { hasText: "Untitled system" }).first().click()
+  await page.getByRole("menuitem", { name: /Untitled system/ }).first().click()
   await boxes(page).filter({ hasText: "Load balancer" }).waitFor()
 })
 
@@ -307,7 +308,7 @@ await check("fits a phone screen without sideways scrolling", async () => {
   const phone = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   await phone.getByRole("heading", { name: /Find where your system/ }).waitFor()
   expect(await phone.evaluate(() => document.documentElement.scrollWidth <= 390), "start page scrolls sideways")
-  await phone.locator(".card", { hasText: "Checkout" }).click()
+  await phone.locator(".example-chip", { hasText: "Checkout" }).click()
   await phone.locator(".react-flow__node-box").first().waitFor()
   expect(await phone.evaluate(() => document.documentElement.scrollWidth <= 390), "workspace scrolls sideways")
   await phone.close()
