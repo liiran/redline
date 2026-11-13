@@ -3,7 +3,8 @@ import { useRef, useState } from "react"
 import { TEMPLATES } from "../../shared/templates.ts"
 import { newBlank, openTemplate, readPhoto, readText } from "./actions.ts"
 import { imageFrom } from "./image.ts"
-import { LiveSample } from "./LiveSample.tsx"
+import { SampleCanvas } from "./Canvas.tsx"
+import { Preview } from "./Preview.tsx"
 import { useApp } from "./store.ts"
 
 const IDEAS = ["A chat app with push alerts", "Ticket sales with a queue"]
@@ -127,22 +128,30 @@ export function Start({ onSketch }: { onSketch: () => void }) {
         <figure className="sample-window">
           <figcaption className="sample-status">
             <span className="dot live" />
-            Sample run · 1,400 req/s
+            Sample run · 690 req/s
           </figcaption>
-          <LiveSample />
+          <SampleCanvas />
         </figure>
 
-        <div className="examples-row">
-          <span className="start-label">Or open an example</span>
-          {TEMPLATES.map((t) => (
-            <button key={t.slug} className="example-chip" onClick={() => openTemplate(t.slug)} title={t.summary}>
-              {t.name}
+        <section className="start-examples">
+          <h2 className="start-label">Start from an example</h2>
+          <div className="examples">
+            {TEMPLATES.map((t) => (
+              <button key={t.slug} className="card" onClick={() => openTemplate(t.slug)} title={t.summary}>
+                <Preview design={t.design} />
+                <strong>{t.name}</strong>
+                <span>{t.summary}</span>
+              </button>
+            ))}
+            <button className="card blank" onClick={newBlank}>
+              <span className="blank-icon">
+                <Plus aria-hidden />
+              </span>
+              <strong>Blank canvas</strong>
+              <span>Build it yourself.</span>
             </button>
-          ))}
-          <button className="example-chip" onClick={newBlank}>
-            <Plus aria-hidden /> Blank canvas
-          </button>
-        </div>
+          </div>
+        </section>
       </div>
       {over && (
         <div className="drop-overlay" aria-hidden>

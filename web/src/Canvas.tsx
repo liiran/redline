@@ -8,6 +8,7 @@ import {
   MarkerType,
   Position,
   ReactFlow,
+  ReactFlowProvider,
   useInternalNode,
   useReactFlow,
   type Connection,
@@ -25,8 +26,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { compact, nodeHealth, type Health } from "../../shared/analyze.ts"
 import { CATALOG, KINDS, edgeRole } from "../../shared/catalog.ts"
 import { edgeId, nodeSettings, type Design, type DesignNode } from "../../shared/design.ts"
-import { NODE_HEIGHT, NODE_WIDTH } from "../../shared/normalize.ts"
+import { NODE_HEIGHT, NODE_WIDTH, layout } from "../../shared/normalize.ts"
 import { arrowBetween, type Point, type Rect } from "../../shared/route.ts"
+import { template } from "../../shared/templates.ts"
 import type { Sample } from "../../shared/samples.ts"
 import type { Issue } from "../../shared/validate.ts"
 import { addConnected, removeSelection } from "./actions.ts"
@@ -446,5 +448,131 @@ function DropMenu({ drop, design, onClose }: { drop: Drop; design: Design; onClo
         </button>
       ))}
     </div>
+  )
+}
+
+/** The start page's sample: users, two API replicas, Redis in front of Postgres. Three columns, so it reads at full size. */
+function sampleDesign(): Design {
+  const feed = template("cached-feed")
+  return layout({
+    ...feed,
+    nodes: feed.nodes.filter((n) => n.id !== "lb"),
+    edges: [
+      { id: "users->api", from: "users", to: "api" },
+      { id: "api->redis", from: "api", to: "redis" },
+      { id: "api->postgres", from: "api", to: "postgres" },
+    ],
+  })
+}
+
+/**
+ * Pretend numbers for the sample, shaped like what a real run reports, so the boxes and arrows read
+ * exactly as they do in the editor: the API is out of CPU while Redis and Postgres have room.
+ */
+function sampleAt(tick: number): Sample {
+  const w = (base: number, seed: number) => Math.round(base * (0.97 + 0.06 * Math.abs(Math.sin(tick * 1.3 + seed))))
+  const latency = (p95: number) => ({ count: 600, p50: Math.round(p95 / 3), p95, p99: p95 * 1.6, max: p95 * 2 })
+  const usage = (cores: number, limit: number) => ({ cores, limit, memoryMb: 60, memoryLimitMb: 256, containers: 1 })
+  const answered = w(627, 1)
+  return {
+    seq: tick,
+    t: tick * 1000,
+    rate: 690,
+    sent: 690,
+    ok: w(620, 2),
+    errors: { timeout: 0, conn: 0, server: 0, client: 0, dropped: 0 },
+    failedBy: null,
+    latency: latency(w(513, 3)),
+    nodes: {
+      api: { kind: "service", up: 2, rps: answered, latency: latency(w(407, 5)), deps: { redis: { callsPs: w(938, 6) }, postgres: { callsPs: w(313, 7) } } },
+      redis: { kind: "cache", up: 1, opsPs: w(1000, 8), hitsPs: 550, missesPs: 450 },
+      postgres: { kind: "database", up: 1, tps: w(352, 9), active: 4 },
+    },
+    usage: { api: usage(1, 1), redis: usage(0.065, 0.5), postgres: usage(0.1, 1) },
+  }
+}
+
+function prefersStill() {
+  try {
+    return matchMedia("(prefers-reduced-motion: reduce)").matches
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The cached feed example under pretend load, drawn with the editor's own boxes and arrows. It's for
+ * the start page: nothing runs, and it can't be dragged, picked or zoomed.
+ */
+export function SampleCanvas() {
+  const design = useMemo(sampleDesign, [])
+  const [tick, setTick] = useState(2)
+  useEffect(() => {
+    if (prefersStill()) return
+    const timer = setInterval(() => setTick((n) => n + 1), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const sample = useMemo(() => sampleAt(tick), [tick])
+  const previous = useMemo(() => sampleAt(tick - 1), [tick])
+
+  const nodes = design.nodes.map(
+    (node): Node => ({
+      id: node.id,
+      type: "box",
+      position: { x: node.x, y: node.y },
+      initialWidth: NODE_WIDTH,
+      initialHeight: NODE_HEIGHT,
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      data: { node, health: nodeHealth(design, node, sample, previous), issue: false, live: true, dim: false } satisfies BoxData,
+    }),
+  )
+  const rects = new Map(design.nodes.map((n) => [n.id, { x: n.x, y: n.y, w: NODE_WIDTH, h: NODE_HEIGHT + 6 }]))
+  const byId = new Map(design.nodes.map((n) => [n.id, n]))
+  const edges = design.edges.map((edge): Edge => {
+    const others = [...rects.entries()].filter(([id]) => id !== edge.from && id !== edge.to).map(([, r]) => r)
+    return {
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      type: "flow",
+      selectable: false,
+      focusable: false,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, markerUnits: "userSpaceOnUse", color: "var(--faint)" },
+      data: {
+        rate: edgeRate(design, byId.get(edge.from)!, byId.get(edge.to)!, sample),
+        live: true,
+        dim: false,
+        focus: false,
+        route: arrowBetween(rects.get(edge.from)!, rects.get(edge.to)!, others),
+      } satisfies FlowData,
+    }
+  })
+
+  return (
+    <ReactFlowProvider>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.08, maxZoom: 1.2 }}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        nodesFocusable={false}
+        edgesFocusable={false}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        preventScrolling={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+      </ReactFlow>
+    </ReactFlowProvider>
   )
 }
