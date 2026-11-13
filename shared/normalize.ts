@@ -2,7 +2,7 @@ import { z } from "zod"
 import { KINDS, edgeRole, type Kind } from "./catalog.ts"
 import { DEFAULT_WORKLOAD, edgeId, uniqueId, type Design, type DesignEdge, type DesignNode } from "./design.ts"
 
-export const NODE_WIDTH = 176
+export const NODE_WIDTH = 200
 export const NODE_HEIGHT = 60
 
 export const sketchSchema = z.object({
@@ -73,7 +73,7 @@ export function orientEdges(nodes: DesignNode[], raw: { from: string; to: string
   return edges
 }
 
-export function fromSketch(sketch: Sketch, photo?: { width: number; height: number }, name = "Whiteboard sketch"): Design {
+export function fromSketch(sketch: Sketch, photo?: { id: string; width: number; height: number }, name = "Whiteboard sketch"): Design {
   const taken = new Set<string>()
   const refToId = new Map<string, string>()
   let nodes: DesignNode[] = []

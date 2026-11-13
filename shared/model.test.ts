@@ -116,11 +116,11 @@ describe("reading a sketch", () => {
   }
 
   it("turns boxes and arrows into a runnable design", () => {
-    const d = fromSketch(sketch, { width: 1200, height: 800 })
+    const d = fromSketch(sketch, { id: "0123456789abcdef", width: 1200, height: 800 })
     expect(d.nodes.map((n) => n.id)).toEqual(["users", "api", "redis", "postgres"])
     expect(d.edges.map((e) => e.id).sort()).toEqual(["api->postgres", "api->redis", "users->api"])
     expect(d.nodes.find((n) => n.id === "api")!.settings.replicas).toBe(3)
-    expect(Math.abs(d.nodes[1]!.x + 88 - (417 + 203 / 2))).toBeLessThanOrEqual(1)
+    expect(Math.abs(d.nodes[1]!.x + 100 - (417 + 203 / 2))).toBeLessThanOrEqual(1)
     expect(canRun(validate(d))).toBe(true)
   })
 

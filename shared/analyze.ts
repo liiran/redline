@@ -98,8 +98,10 @@ export function nodeHealth(design: Design, node: DesignNode, sample: Sample | un
       }
       const waits = data.poolWaitsPs ?? 0
       const max = data.poolMax ?? 0
-      if (max > 0 && waits > 0 && (data.poolWaitMs ?? 0) >= 2) {
-        const poolLoad = Math.min(1.5, (data.poolInUse ?? 0) / max + Math.min(0.5, (data.poolWaitMs ?? 0) / 50))
+      // A box short of CPU holds its connections longer, so waits there are a symptom. Pool
+      // pressure only counts when the CPU has room, and it ranks below any box that's out of CPU.
+      if (max > 0 && waits > 0 && (data.poolWaitMs ?? 0) >= 2 && cpu < HOT) {
+        const poolLoad = Math.min(0.94, 0.85 + (data.poolWaitMs ?? 0) / 500)
         if (poolLoad > load) {
           load = poolLoad
           pressure = "connections"

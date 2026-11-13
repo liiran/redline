@@ -1,28 +1,12 @@
-import { findBottleneck, compact, ms, percent, type Finding } from "../shared/analyze.ts"
+import { findBottleneck, compact, ms, percent } from "../shared/analyze.ts"
 import type { Design } from "../shared/design.ts"
 import { errorCount, type Sample } from "../shared/samples.ts"
-import { suggest, type Suggestion } from "../shared/suggest.ts"
+import { suggest } from "../shared/suggest.ts"
+import type { RampResult, Step } from "../shared/results.ts"
+
+export type { RampResult, Step }
 
 export const LADDER = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12_000, 16_000, 20_000]
-
-export type Step = {
-  rate: number
-  answered: number
-  p95: number
-  errorRate: number
-  pass: boolean
-  reason: string
-}
-
-export type RampResult = {
-  capacity: number | null
-  failedAt: number | null
-  steps: Step[]
-  finding: Finding | null
-  suggestions: Suggestion[]
-  probeLimited: boolean
-  cancelled: boolean
-}
 
 export type Driver = {
   setRate(rps: number): Promise<void>

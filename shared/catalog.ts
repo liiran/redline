@@ -16,6 +16,7 @@ export type SettingKey = keyof Settings
 
 export type KindInfo = {
   title: string
+  short: string
   blurb: string
   runs: string
   image: "runtime" | "postgres" | "redis" | "none"
@@ -27,6 +28,7 @@ const base: Settings = { cpus: 0.5, memoryMb: 128, replicas: 1, workMs: 0, pool:
 
 export const CATALOG: Record<Kind, KindInfo> = {
   client: {
+    short: "Traffic source",
     title: "Users",
     blurb: "Where the traffic comes from.",
     runs: "Redline's load generator",
@@ -35,6 +37,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: [],
   },
   cdn: {
+    short: "Edge cache",
     title: "CDN",
     blurb: "Keeps copies of responses close to users and answers repeat reads itself.",
     runs: "Redline edge cache (in-memory, LRU)",
@@ -43,6 +46,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["cpus", "ttlSec"],
   },
   loadbalancer: {
+    short: "Round robin",
     title: "Load balancer",
     blurb: "Spreads requests across every copy of the services behind it.",
     runs: "Redline reverse proxy (round robin)",
@@ -51,6 +55,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["cpus"],
   },
   service: {
+    short: "Your code",
     title: "Service",
     blurb: "Your application code: it handles a request and talks to what it points at.",
     runs: "Redline service (Go)",
@@ -59,6 +64,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["replicas", "cpus", "workMs", "pool"],
   },
   worker: {
+    short: "Background jobs",
     title: "Worker",
     blurb: "Takes jobs off a queue and does the slow part in the background.",
     runs: "Redline worker (Go)",
@@ -67,6 +73,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["replicas", "cpus", "workMs", "pool"],
   },
   queue: {
+    short: "Redis Streams",
     title: "Queue",
     blurb: "Holds jobs until a worker picks them up.",
     runs: "Redis Streams",
@@ -75,6 +82,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["cpus"],
   },
   cache: {
+    short: "Redis",
     title: "Cache",
     blurb: "Keeps hot data in memory so reads skip the database.",
     runs: "Redis",
@@ -83,6 +91,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["cpus", "ttlSec"],
   },
   database: {
+    short: "PostgreSQL",
     title: "Database",
     blurb: "Stores the data. Every write lands here.",
     runs: "PostgreSQL",
@@ -91,6 +100,7 @@ export const CATALOG: Record<Kind, KindInfo> = {
     editable: ["cpus"],
   },
   external: {
+    short: "Outside service",
     title: "External API",
     blurb: "A service you don't run, like payments or email. Redline stands in for it with a fixed delay.",
     runs: "Redline stand-in with a set delay",
@@ -104,7 +114,7 @@ export const SETTING_INFO: Record<SettingKey, { label: string; unit: string; min
   replicas: { label: "Copies", unit: "", min: 1, max: 8, step: 1, hint: "How many identical containers run this box." },
   cpus: { label: "CPU", unit: "cores", min: 0.1, max: 4, step: 0.1, hint: "The most CPU each container may use." },
   memoryMb: { label: "Memory", unit: "MB", min: 64, max: 2048, step: 64, hint: "The most memory each container may use." },
-  workMs: { label: "Work per request", unit: "ms CPU", min: 0, max: 50, step: 0.5, hint: "CPU time your code spends on each request, besides waiting on others." },
+  workMs: { label: "Work per request", unit: "ms CPU", min: 0, max: 20, step: 0.5, hint: "CPU time your code spends on each request, besides waiting on others." },
   pool: { label: "Database connections", unit: "", min: 1, max: 100, step: 1, hint: "Connections each copy keeps open to each database." },
   ttlSec: { label: "Keep entries for", unit: "s", min: 1, max: 3600, step: 1, hint: "How long a cached answer stays fresh." },
   latencyMs: { label: "Response time", unit: "ms", min: 1, max: 5000, step: 1, hint: "How long the outside service takes to answer." },

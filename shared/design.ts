@@ -46,7 +46,9 @@ export const designSchema = z.object({
   nodes: z.array(nodeSchema).max(MAX_NODES),
   edges: z.array(edgeSchema).max(MAX_NODES * 4),
   workload: workloadSchema,
-  photo: z.object({ width: z.number().positive(), height: z.number().positive() }).optional(),
+  photo: z
+    .object({ id: z.string().regex(/^[a-f0-9]{16}$/), width: z.number().positive(), height: z.number().positive() })
+    .optional(),
 })
 
 export type DesignNode = z.infer<typeof nodeSchema>

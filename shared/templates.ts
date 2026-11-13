@@ -10,7 +10,7 @@ type Spec = {
   workload?: Partial<Workload>
 }
 
-const COL = 260
+const COL = 290
 const ROW = 120
 
 const SPECS: Spec[] = [
