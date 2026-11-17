@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, readdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { App } from "./app.ts"
 import { Docker } from "./docker.ts"
@@ -13,6 +13,7 @@ if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const port = Number(process.env.REDLINE_PORT ?? 4600)
 const store = new Store(process.env.REDLINE_DATA ?? join(root, ".redline"))
+store.sweepPhotos()
 // Test mode for the page's browser tests: no Docker, no Claude, made-up numbers.
 const fake = process.env.REDLINE_FAKE === "1"
 const docker = fake ? new FakeDocker() : new Docker()
@@ -41,6 +42,9 @@ if (fake) console.log("  TEST MODE: nothing runs in Docker and every number is m
 if (info.ok && !fake) {
   const removed = await sweep(docker)
   if (removed) console.log(`  Removed ${removed} run${removed === 1 ? "" : "s"} left over from last time`)
+  // Every run from before this start is over, so its compose file isn't needed.
+  const runs = join(store.dir, "runs")
+  for (const name of readdirSync(runs)) rmSync(join(runs, name), { recursive: true, force: true })
 }
 console.log("")
 

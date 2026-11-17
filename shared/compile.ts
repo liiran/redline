@@ -51,6 +51,19 @@ export type Compiled = {
 
 const STREAM = "jobs"
 
+/**
+ * A run's containers need each other and nothing else. They share a network with no way out to
+ * the internet; only the load generator also joins a second network, so Redline can reach it on
+ * 127.0.0.1. No container can gain privileges, and each has a process limit.
+ */
+const RUN_NETWORK = "run"
+const EDGE_NETWORK = "edge"
+const LOCKED = { security_opt: ["no-new-privileges:true"], pids_limit: 1024 }
+/** Postgres's and Redis's start scripts hand the data folder to their own user, then switch to it: only that is allowed. */
+const DATA_CAPS = { cap_drop: ["ALL"], cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"] }
+/** Redline's own program needs no privileges at all and writes no files. */
+const RUNTIME_CAPS = { cap_drop: ["ALL"], read_only: true }
+
 function dsn(id: string) {
   return `postgres://${PG.user}:${PG.password}@${id}:5432/${PG.db}?sslmode=disable`
 }
@@ -115,6 +128,9 @@ export function compile(design: Design, options: { runId: string; runtimeImage: 
         command: ["postgres", "-c", `max_connections=${POSTGRES_MAX_CONNECTIONS}`, "-c", "shared_buffers=128MB", "-c", "fsync=on"],
         healthcheck: { test: ["CMD-SHELL", `pg_isready -U ${PG.user} -d ${PG.db}`], interval: "1s", timeout: "3s", retries: 60 },
         labels: labels(node.id),
+        networks: [RUN_NETWORK],
+        ...LOCKED,
+        ...DATA_CAPS,
         ...limits,
       }
       probeNodes.push({ id: node.id, kind: node.kind, type: "postgres", dsn: dsn(node.id) })
@@ -139,6 +155,9 @@ export function compile(design: Design, options: { runId: string; runtimeImage: 
         ],
         healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "1s", timeout: "3s", retries: 60 },
         labels: labels(node.id),
+        networks: [RUN_NETWORK],
+        ...LOCKED,
+        ...DATA_CAPS,
         ...limits,
       }
       probeNodes.push(
@@ -204,6 +223,9 @@ export function compile(design: Design, options: { runId: string; runtimeImage: 
       environment: { REDLINE_CONFIG: JSON.stringify(config) },
       healthcheck: { test: ["CMD", "/redline", "health"], interval: "1s", timeout: "3s", retries: 60 },
       labels: labels(node.id),
+      networks: [RUN_NETWORK],
+      ...LOCKED,
+      ...RUNTIME_CAPS,
       ...(settings.replicas > 1 ? { deploy: { replicas: settings.replicas } } : {}),
       ...(Object.keys(dependsOn).length ? { depends_on: dependsOn } : {}),
       ...limits,
@@ -225,6 +247,9 @@ export function compile(design: Design, options: { runId: string; runtimeImage: 
     ports: [`127.0.0.1::${PROBE_PORT}`],
     healthcheck: { test: ["CMD", "/redline", "health", String(PROBE_PORT)], interval: "1s", timeout: "3s", retries: 60 },
     labels: labels("probe"),
+    networks: [RUN_NETWORK, EDGE_NETWORK],
+    ...LOCKED,
+    ...RUNTIME_CAPS,
     depends_on: Object.fromEntries(Object.keys(services).map((id) => [id, { condition: "service_healthy" }])),
     cpus: cpus(PROBE_CPUS),
     mem_limit: "1g",
@@ -233,7 +258,7 @@ export function compile(design: Design, options: { runId: string; runtimeImage: 
   const project = projectName(options.runId)
   return {
     project,
-    compose: { name: project, services },
+    compose: { name: project, services, networks: { [RUN_NETWORK]: { internal: true }, [EDGE_NETWORK]: {} } },
     agents,
     probe,
   }

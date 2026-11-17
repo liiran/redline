@@ -214,6 +214,19 @@ e2e/       browser checks
 
 Redline starts containers, so it only listens on 127.0.0.1. It refuses requests whose `Host` isn't its own (which stops DNS
 rebinding), changes that come from another site, and anything that isn't JSON. The page runs under a strict Content
-Security Policy. Compose files are built from a validated design, never from text Claude wrote: box names are reduced to
-`a-z0-9-`, images are fixed, and containers get no volumes, no extra privileges and no published ports. Containers left
-behind by a crash are removed the next time Redline starts.
+Security Policy, and other sites can't embed its pages, data or photos. A photo is redrawn in your browser before it's
+sent, which drops its location and camera details, and Redline refuses any file whose bytes aren't really an image.
+
+Compose files are built from a validated design, never from text Claude wrote: box names are reduced to `a-z0-9-`,
+names Redline uses itself are refused, and images are fixed. A run's containers share a network with no way out to the
+internet, nothing from your computer is mounted into them, and none can gain privileges. Redline's own program runs as
+an unprivileged user with every Linux capability dropped and a read-only file system; Postgres and Redis keep only the
+five they need to start. Only the load generator is reachable from your computer, on 127.0.0.1, and it too refuses
+requests addressed to anything but 127.0.0.1 or localhost.
+
+Claude Code reads drawings with every tool off, no MCP servers, none of your settings, from an empty folder, and without
+saving the conversation. Its answer is checked against a fixed shape and only ever becomes boxes and arrows. Nothing is
+sent anywhere else: the page loads no outside fonts or scripts, and nothing is tracked. Containers left behind by a
+crash are removed the next time Redline starts, and photos that no saved design uses are deleted after a day.
+
+Anyone who can run programs on your computer can also use Redline, as with most tools that listen on 127.0.0.1.

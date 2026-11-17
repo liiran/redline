@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { compile, projectName, PROBE_PORT } from "../shared/compile.ts"
 import { nodeSettings, type Design } from "../shared/design.ts"
 import type { Sample, Usage } from "../shared/samples.ts"
@@ -122,5 +122,6 @@ export class DockerRuntime implements Runtime {
   async stop() {
     for (const stop of this.#stopStats.splice(0)) stop()
     await run("docker", compose(this.project, this.#file, ["down", "-v", "--remove-orphans", "-t", "2"]), { timeoutMs: 120_000 })
+    rmSync(dirname(this.#file), { recursive: true, force: true })
   }
 }

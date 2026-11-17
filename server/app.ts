@@ -35,6 +35,14 @@ const TYPES: Record<string, string> = {
   ".webmanifest": "application/manifest+json",
 }
 
+/** The first bytes every file of each type starts with. A photo that doesn't match is refused, not stored. */
+const SIGNATURES: Record<Image["mediaType"], (bytes: Buffer) => boolean> = {
+  "image/png": (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  "image/jpeg": (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  "image/gif": (b) => b.subarray(0, 6).toString("latin1") === "GIF87a" || b.subarray(0, 6).toString("latin1") === "GIF89a",
+  "image/webp": (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP",
+}
+
 class HttpError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -59,6 +67,8 @@ export class App {
   #clients = new Set<ServerResponse>()
   #options: AppOptions
   #hostCpus: number | undefined
+  /** Runs being stopped, one after another, so a new run only starts once the old ones are gone. */
+  #teardown: Promise<void> = Promise.resolve()
 
   constructor(options: AppOptions) {
     this.#options = options
@@ -86,6 +96,7 @@ export class App {
   }
 
   async close() {
+    await this.#teardown
     await this.session?.stop()
     for (const client of this.#clients) client.end()
     this.#clients.clear()
@@ -98,6 +109,7 @@ export class App {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
     })
     res.end(text)
   }
@@ -150,9 +162,10 @@ export class App {
     return this.#hostCpus
   }
 
+  /** Only the current run reaches the page, so a run being replaced can't overwrite what it shows. */
   #attach(session: Session) {
-    session.on("state", (view) => this.#broadcast("state", view))
-    session.on("sample", (sample) => this.#broadcast("sample", sample))
+    session.on("state", (view) => this.session === session && this.#broadcast("state", view))
+    session.on("sample", (sample) => this.session === session && this.#broadcast("sample", sample))
     session.on("test", (id) => this.#broadcast("test", { id }))
   }
 
@@ -176,7 +189,13 @@ export class App {
     }
 
     if (route === "GET /api/events") {
-      res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" })
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+      })
       res.write(`event: hello\ndata: {}\n\n`)
       this.#clients.add(res)
       const ping = setInterval(() => res.write(": ping\n\n"), 15_000)
@@ -215,18 +234,26 @@ export class App {
     if (match && req.method === "GET") {
       const photo = store.readPhoto(match[1]!)
       if (!photo) throw new HttpError(404, "That photo is gone.")
-      res.writeHead(200, { "Content-Type": photo.type, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" })
+      res.writeHead(200, {
+        "Content-Type": photo.type,
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      })
       return res.end(photo.bytes)
     }
 
     if (route === "POST /api/read") {
       if (!reader) throw new HttpError(503, "Reading drawings needs Claude Code signed in, or an ANTHROPIC_API_KEY.")
       const input = readSchema.parse(await this.#body(req, 12_000_000)) as { image?: Image; text?: string }
+      const bytes = input.image ? Buffer.from(input.image.data, "base64") : null
+      if (input.image && !SIGNATURES[input.image.mediaType](bytes!)) throw new HttpError(400, `That file isn't a ${input.image.mediaType.slice(6).toUpperCase()} image.`)
       const started = Date.now()
       const reading = await reader.read(input).catch((error) => {
         throw new HttpError(502, error instanceof Error ? error.message : String(error))
       })
-      const photoId = input.image ? store.savePhoto(Buffer.from(input.image.data, "base64"), input.image.mediaType) : undefined
+      const photoId = input.image ? store.savePhoto(bytes!, input.image.mediaType) : undefined
       const { design, added } = toDesign(reading.sketch, input, photoId)
       return this.#json(res, 200, {
         design,
@@ -250,13 +277,17 @@ export class App {
       const issues = validate(design, await this.#hostCpusOnce())
       if (!canRun(issues)) throw new HttpError(400, issues.find((issue) => issue.level === "error")!.message)
       const designId = typeof body.designId === "string" && /^[a-f0-9]{16}$/.test(body.designId) ? body.designId : null
-      await this.session?.stop()
       const runtime = this.#options.runtime ?? ((d: Design, runId: string) => new DockerRuntime(docker, d, runId, store.dir))
       const session = new Session({ store, runtime: (runId) => runtime(design, runId), ramp: this.#options.ramp }, design, designId)
+      // Taken over at once, so two Run clicks at the same moment can't both start containers: the
+      // newest wins, and every run before it is stopped first, in order.
+      const previous = this.session
       this.session = session
       this.#attach(session)
-      void session.start()
-      return this.#json(res, 200, session.view())
+      const teardown = (this.#teardown = this.#teardown.then(() => previous?.stop()).catch(() => {}))
+      await teardown
+      if (this.session === session) void session.start()
+      return this.#json(res, 200, (this.session ?? session).view())
     }
 
     if (route === "DELETE /api/session") {
@@ -325,6 +356,7 @@ export class App {
       "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
+      "Cross-Origin-Resource-Policy": "same-origin",
       ...(type.startsWith("text/html")
         ? {
             "Content-Security-Policy":

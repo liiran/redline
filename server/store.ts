@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs"
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, existsSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { randomUUID } from "node:crypto"
@@ -88,7 +88,24 @@ export class Store {
   }
 
   photoInUse(photoId: string) {
-    return this.listDesigns().some((row) => row.photo === photoId)
+    return !!this.db.prepare("SELECT 1 FROM designs WHERE json_extract(json, '$.photo.id') = ? LIMIT 1").get(photoId)
+  }
+
+  /**
+   * Deletes photos no saved design uses, once they're a day old: a drawing that was read and then
+   * thrown away isn't kept. Returns how many went.
+   */
+  sweepPhotos(olderThanMs = 24 * 60 * 60 * 1000) {
+    const dir = join(this.dir, "photos")
+    let removed = 0
+    for (const name of readdirSync(dir)) {
+      const id = name.match(/^([a-f0-9]{16})\.img$/)?.[1]
+      if (!id || Date.now() - statSync(join(dir, name)).mtimeMs < olderThanMs || this.photoInUse(id)) continue
+      rmSync(this.photoPath(id), { force: true })
+      rmSync(`${this.photoPath(id)}.type`, { force: true })
+      removed++
+    }
+    return removed
   }
 
   photoPath(id: string) {

@@ -102,7 +102,7 @@ func runProbe(ctx context.Context, cfg ProbeConfig) error {
 		go p.generate(ctx)
 		go p.tick(ctx)
 	}()
-	return serve(ctx, cfg.Port, p.routes())
+	return serve(ctx, cfg.Port, localOnly(p.routes()))
 }
 
 func (p *Probe) Rate() float64 { return math.Float64frombits(p.rate.Load()) }
@@ -150,6 +150,23 @@ func (p *Probe) routes() http.Handler {
 		}
 	})
 	return mux
+}
+
+// localOnly refuses requests not addressed to 127.0.0.1 or localhost. The load generator's port
+// is published on this machine, so without the check a web page could use DNS rebinding to
+// reach it while a run is up.
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && host != "localhost" {
+			http.Error(w, "Redline's load generator only answers on 127.0.0.1.", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

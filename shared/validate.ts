@@ -1,5 +1,5 @@
 import { CATALOG, POSTGRES_MAX_CONNECTIONS, edgeRole } from "./catalog.ts"
-import { nodeSettings, type Design, type DesignNode } from "./design.ts"
+import { RESERVED_IDS, nodeSettings, type Design, type DesignNode } from "./design.ts"
 
 export type Issue = {
   level: "error" | "warning"
@@ -50,6 +50,9 @@ export function validate(design: Design, hostCpus?: number): Issue[] {
   const clients = design.nodes.filter((node) => node.kind === "client")
 
   if (byId.size !== design.nodes.length) issues.push({ level: "error", message: "Two boxes share the same id." })
+  for (const node of design.nodes) {
+    if (RESERVED_IDS.has(node.id)) issues.push({ level: "error", nodeId: node.id, message: `${name(node)} uses the id “${node.id}”, which Redline keeps for its own containers.` })
+  }
 
   if (clients.length === 0) {
     issues.push({ level: "error", message: "Add a Users box so Redline knows where traffic enters.", fix: { kind: "add-client" } })

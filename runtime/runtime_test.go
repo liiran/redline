@@ -367,3 +367,23 @@ func TestParseInfoAndSplitURL(t *testing.T) {
 		t.Errorf("split = %s %d", host, port)
 	}
 }
+
+func TestProbeOnlyAnswersOnLocalhost(t *testing.T) {
+	handler := localOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	for host, want := range map[string]int{
+		"127.0.0.1:54184":           http.StatusOK,
+		"localhost:7000":            http.StatusOK,
+		"127.0.0.1":                 http.StatusOK,
+		"evil.example:54184":        http.StatusForbidden,
+		"127.0.0.1.evil.example:80": http.StatusForbidden,
+		"":                          http.StatusForbidden,
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/rate", strings.NewReader(`{"rps":1}`))
+		req.Host = host
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q: got %d, want %d", host, rec.Code, want)
+		}
+	}
+}

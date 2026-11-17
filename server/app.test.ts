@@ -130,9 +130,74 @@ describe("designs and drawings", () => {
   it("rejects an image that isn't base64", async () => {
     expect((await post("/api/read", { image: { data: "<script>alert(1)</script>", mediaType: "image/png", width: 100, height: 100 } })).status).toBe(400)
   })
+
+  it("refuses a file that only claims to be an image, and keeps nothing", async () => {
+    const page = Buffer.from("<html><script>alert(1)</script></html>").toString("base64")
+    const res = await post("/api/read", { image: { data: page, mediaType: "image/png", width: 100, height: 100 } })
+    expect(res.status).toBe(400)
+    expect((await json(res)).error).toBe("That file isn't a PNG image.")
+  })
+
+  it("keeps other sites from embedding anything", async () => {
+    expect((await fetch(base + "/api/designs")).headers.get("cross-origin-resource-policy")).toBe("same-origin")
+    expect((await fetch(base + "/")).headers.get("cross-origin-resource-policy")).toBe("same-origin")
+  })
+
+  it("deletes day-old photos that no saved design uses", async () => {
+    const { utimesSync } = await import("node:fs")
+    const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==", "base64")
+    const kept = store.savePhoto(pixel, "image/png")
+    const dropped = store.savePhoto(pixel, "image/png")
+    const fresh = store.savePhoto(pixel, "image/png")
+    const design = { ...template("url-shortener"), photo: { id: kept, width: 10, height: 10 } }
+    store.saveDesign(design)
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    for (const id of [kept, dropped]) utimesSync(store.photoPath(id), old, old)
+    store.sweepPhotos()
+    expect(store.readPhoto(kept)).not.toBeNull()
+    expect(store.readPhoto(dropped)).toBeNull()
+    expect(store.readPhoto(fresh)).not.toBeNull()
+  })
+})
+
+describe("Run pressed several times at once", () => {
+  it("leaves exactly one run going", async () => {
+    const started = new Set<FakeRuntime>()
+    class Counted extends FakeRuntime {
+      override async start(...args: Parameters<FakeRuntime["start"]>) {
+        started.add(this)
+        return super.start(...args)
+      }
+      override async stop() {
+        started.delete(this)
+        return super.stop()
+      }
+    }
+    const own = new App({ store, docker: new FakeDocker(), reader: null, port: 0, dist: dir, runtime: (design) => new Counted(design, 20) })
+    await own.listen()
+    const design = template("url-shortener")
+    const send = () =>
+      fetch(`http://127.0.0.1:${own.port}/api/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ design }) })
+    const answers = await Promise.all([send(), send(), send()])
+    expect(answers.map((a) => a.status)).toEqual([200, 200, 200])
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    expect(started.size).toBe(1)
+    await own.close()
+    expect(started.size).toBe(0)
+  })
 })
 
 describe("a run", () => {
+  it("refuses a box that uses the id of Redline's own containers", async () => {
+    const design = template("url-shortener")
+    const rename = (id: string) => (id === "api" ? "probe" : id)
+    design.nodes = design.nodes.map((n) => ({ ...n, id: rename(n.id) }))
+    design.edges = design.edges.map((e) => ({ ...e, from: rename(e.from), to: rename(e.to) }))
+    const res = await post("/api/session", { design })
+    expect(res.status).toBe(400)
+    expect((await json(res)).error).toContain("keeps for its own containers")
+  })
+
   it("refuses a design that can't run, and says why", async () => {
     const design = template("url-shortener")
     design.nodes = design.nodes.filter((n) => n.kind !== "client")

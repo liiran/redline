@@ -231,12 +231,12 @@ func (s *pgScraper) Scrape(ctx context.Context) NodeSample {
 }
 
 type redisScraper struct {
-	node      ProbeNode
-	client    *redis.Client
-	prevOps   int64
-	prevHits  int64
-	prevMiss  int64
-	prevAt    time.Time
+	node     ProbeNode
+	client   *redis.Client
+	prevOps  int64
+	prevHits int64
+	prevMiss int64
+	prevAt   time.Time
 }
 
 func (s *redisScraper) ID() string { return s.node.ID }

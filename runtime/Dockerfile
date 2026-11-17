@@ -7,4 +7,6 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/redline .
 
 FROM scratch
 COPY --from=build /out/redline /redline
+# Runs as "nobody": the program needs no privileges and writes no files.
+USER 65534:65534
 ENTRYPOINT ["/redline"]

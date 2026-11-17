@@ -61,6 +61,7 @@ export class Session extends EventEmitter {
   #store: Store
   #runtime: Runtime
   #abort = new AbortController()
+  #starting: Promise<void> | null = null
   #rampAbort: AbortController | null = null
   #rampOptions: { settle?: number; hold?: number }
   #waiters: { count: number; got: Sample[]; resolve: (s: Sample[]) => void; reject: (e: Error) => void }[] = []
@@ -111,7 +112,14 @@ export class Session extends EventEmitter {
     if (this.log.length > 400) this.log.splice(0, this.log.length - 400)
   }
 
-  async start() {
+  start() {
+    // A run stopped before it started stays stopped.
+    if (this.#abort.signal.aborted) return Promise.resolve()
+    this.#starting ??= this.#start()
+    return this.#starting
+  }
+
+  async #start() {
     const signal = this.#abort.signal
     try {
       const issues = validate(this.design)
@@ -258,6 +266,9 @@ export class Session extends EventEmitter {
     this.#rampAbort?.abort()
     this.#abort.abort()
     for (const waiter of this.#waiters.splice(0)) waiter.reject(new Error("stopped"))
+    // Let a start still under way see the abort and finish first, or `down` could run before
+    // `up` has made its containers and leave them behind.
+    await this.#starting?.catch(() => {})
     await this.#runtime.stop().catch(() => {})
     this.phase = wasFailed ? "failed" : "stopped"
     this.step = "Stopped"
